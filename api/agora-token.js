@@ -1,23 +1,27 @@
-// netlify/functions/agora-token.js
+// api/agora-token.js - CORREGIDO PARA VERCEL (Node.js Serverless)
 
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 
-// 🚨 La Cloud Function de Netlify usa el formato de handler de AWS Lambda.
-exports.handler = async (event) => {
+// 🏆 CORRECCIÓN CRÍTICA: La función debe exportarse directamente como handler (req, res) para Vercel
+module.exports = async (req, res) => {
     
-    // Obtener las claves secretas de las variables de entorno de Netlify (SEGURIDAD)
+    // Obtener las claves secretas de las variables de entorno de Vercel (SEGURIDAD)
     const AGORA_APP_ID = process.env.AGORA_APP_ID;
     const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
     
-    // El cliente envía los parámetros en el query string
-    const channelName = event.queryStringParameters.channel; 
-    const uidClientString = event.queryStringParameters.uid; // El UID de tu Anon-SESS-XXX
+    // 🏆 CORRECCIÓN CRÍTICA: Los parámetros se obtienen de req.query en Vercel, no de event.queryStringParameters
+    const channelName = req.query.channel; 
+    const uidClientString = req.query.uid;
     
     if (!channelName || !uidClientString) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: 'Faltan parámetros de canal o UID.' }),
-        };
+        // 🏆 CORRECCIÓN CRÍTICA: Usar res.status().json() para Vercel
+        return res.status(400).json({ error: 'Faltan parámetros de canal o UID.' });
+    }
+
+    if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+        console.error("VARIABLES DE ENTORNO AGORA FALTANTES O NO CONFIGURADAS");
+        // Devolver un error 500 para el frontend si las claves secretas no están definidas
+        return res.status(500).json({ error: 'La configuración de la APP ID o el CERTIFICATE del servidor es incorrecta.' });
     }
 
     // Configuración del Token
@@ -38,17 +42,12 @@ exports.handler = async (event) => {
             privilegeExpiredTs
         );
         
-        // Devolver el token al cliente de React
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ token: token, uid: uid }), // Enviamos el token y el UID
-        };
+        // 🏆 CORRECCIÓN CRÍTICA: Usar res.status().json() para Vercel
+        return res.status(200).json({ token: token, uid: uid });
 
     } catch (error) {
         console.error("Error al generar el token de Agora:", error.message);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Fallo interno al generar el token.' }),
-        };
+        // Devolver un 500 si la generación del token falla por cualquier otra razón
+        return res.status(500).json({ error: 'Fallo interno al generar el token.' });
     }
 };

@@ -16,7 +16,7 @@ export const useAgoraAudio = (channelName, uidString) => {
     const [isMuted, setIsMuted] = useState(false);
     const [remoteUsers, setRemoteUsers] = useState([]);
     
-    // 💡 SOLUCIÓN CRÍTICA: Usamos useRef para almacenar la pista local de forma estable
+    // Usamos useRef para almacenar la pista local de forma estable
     const localTrackRef = useRef(null); 
     
     // Función para silenciar/activar
@@ -43,11 +43,11 @@ export const useAgoraAudio = (channelName, uidString) => {
                 const response = await fetch(`${TOKEN_SERVER_URL}?channel=${channelName}&uid=${uidString}`);
                 
                 // 🏆 CORRECCIÓN CRÍTICA PARA EL BUCLLE Y EL ERROR 500/JSON:
-                // Si la función falla, la respuesta.ok será falsa.
+                // Si la función falla (ej. 500 por error de credenciales), la respuesta.ok será falsa.
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('[AGORA] Error de Servidor (500/404):', errorText);
-                    // Lanzar un error aquí detiene el bucle y el intento de parsear JSON HTML.
+                    // Esto detiene el bucle y el intento de parsear JSON HTML/Error.
                     throw new Error(`Error al obtener token del servidor (${response.status}).`);
                 }
 
@@ -60,7 +60,7 @@ export const useAgoraAudio = (channelName, uidString) => {
                 const token = data.token;
                 const uidToUse = data.uid;
                 
-                // 2. CONECTAR (Esto pide permisos de micrófono)
+                // 2. CONECTAR (Esto pide permisos de micrófono si es la primera vez)
                 await client.join(APP_ID, channelName, token, uidToUse); 
                 
                 // 3. OBTENER PISTA DE MICRÓFONO Y PUBLICAR
@@ -79,7 +79,7 @@ export const useAgoraAudio = (channelName, uidString) => {
                 // Si la conexión falla, intentamos una limpieza forzada.
                 try { 
                     if (client.connectionState !== 'DISCONNECTED') {
-                        // Opcional: una pequeña pausa para evitar el re-render instantáneo
+                        // Pequeña pausa opcional para ayudar a prevenir el bucle de re-render
                         await new Promise(r => setTimeout(r, 1000)); 
                         await client.leave(); 
                     }

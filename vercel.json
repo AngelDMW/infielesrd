@@ -1,11 +1,5 @@
+// Archivo: vercel.json (Versión Simplificada y Final)
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/node"
-    }
-  ],
   "routes": [
     {
       "src": "/api/(.*)",

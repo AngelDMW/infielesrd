@@ -1,0 +1,8 @@
+{
+  "name": "agora-token-generator",
+  "version": "1.0.0",
+  "description": "Netlify function to securely generate Agora tokens.",
+  "dependencies": {
+    "agora-access-token": "^2.0.0" 
+  }
+}

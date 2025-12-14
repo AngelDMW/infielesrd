@@ -1,4 +1,4 @@
-// src/hooks/useAgoraAudio.js - SOLUCIÓN DEFINITIVA A BUCLE INFINITO Y LENTITUD
+// src/hooks/useAgoraAudio.js - VERSIÓN CORREGIDA FINAL PARA VERCEL Y BUCLLE INFINITO
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'; 
 import AgoraRTC from 'agora-rtc-sdk-ng';
@@ -6,7 +6,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 // 🚨 1. APP ID - Debe ser el ID de tu proyecto Agora
 const APP_ID = 'c8d1e982bbe14be08f5f2b49b0f3c0f4'; 
 // 🏆 2. ENDPOINT CORREGIDO: Usar la ruta de Vercel (la carpeta 'api')
-const TOKEN_SERVER_URL = '/api/agora-token'; // <--- ¡CORRECCIÓN CLAVE!
+const TOKEN_SERVER_URL = '/api/agora-token'; // <--- ¡CORRECCIÓN CRÍTICA DE VERCEL!
 
 // El cliente de Agora se inicializa solo una vez (fuera del hook para ser estable)
 const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -16,8 +16,10 @@ export const useAgoraAudio = (channelName, uidString) => {
     const [isMuted, setIsMuted] = useState(false);
     const [remoteUsers, setRemoteUsers] = useState([]);
     
+    // 💡 SOLUCIÓN CRÍTICA: Usamos useRef para almacenar la pista local de forma estable
     const localTrackRef = useRef(null); 
     
+    // Función para silenciar/activar
     const toggleMute = useCallback(() => {
         const track = localTrackRef.current;
         if (!track) return;
@@ -29,7 +31,7 @@ export const useAgoraAudio = (channelName, uidString) => {
             console.error("[AGORA] Fallo al mutear/desmutear la pista:", error);
         }
         
-    }, [isMuted]); 
+    }, [isMuted]);
 
 
     // 🚩 EFECTO DE CONEXIÓN Y LIMPIEZA
@@ -39,25 +41,34 @@ export const useAgoraAudio = (channelName, uidString) => {
             try {
                 // 1. Obtener Token del servidor Vercel (AHORA USA /api/)
                 const response = await fetch(`${TOKEN_SERVER_URL}?channel=${channelName}&uid=${uidString}`);
-                const data = await response.json(); 
+                
+                // 🏆 CORRECCIÓN CRÍTICA PARA EL BUCLLE Y EL ERROR 500/JSON:
+                // Si la función falla, la respuesta.ok será falsa.
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[AGORA] Error de Servidor (500/404):', errorText);
+                    // Lanzar un error aquí detiene el bucle y el intento de parsear JSON HTML.
+                    throw new Error(`Error al obtener token del servidor (${response.status}).`);
+                }
 
+                const data = await response.json(); 
+                
                 if (!data.token || data.uid === undefined) {
-                    // ¡ADVERTENCIA! Si falla aquí, revisar AGORA_APP_CERTIFICATE en Vercel
-                    throw new Error("Respuesta de token inválida del servidor Vercel.");
+                    throw new Error("Respuesta de token inválida del servidor.");
                 }
                 
                 const token = data.token;
                 const uidToUse = data.uid;
                 
-                // 2. CONECTAR
+                // 2. CONECTAR (Esto pide permisos de micrófono)
                 await client.join(APP_ID, channelName, token, uidToUse); 
                 
                 // 3. OBTENER PISTA DE MICRÓFONO Y PUBLICAR
                 const track = await AgoraRTC.createMicrophoneAudioTrack();
                 await client.publish(track);
                 
-                // 4. 💡 ALMACENAR EN REF Y ACTUALIZAR ESTADO DE CONEXIÓN
-                localTrackRef.current = track; 
+                // 4. ALMACENAR EN REF Y ACTUALIZAR ESTADO DE CONEXIÓN
+                localTrackRef.current = track;
                 setIsConnected(true);
                 setIsMuted(false); 
                 console.log(`[AGORA] Conectado al canal: ${channelName}`);
@@ -65,8 +76,11 @@ export const useAgoraAudio = (channelName, uidString) => {
             } catch (error) {
                 console.error('[AGORA] Error Crítico de Conexión:', error.message);
                 setIsConnected(false);
+                // Si la conexión falla, intentamos una limpieza forzada.
                 try { 
                     if (client.connectionState !== 'DISCONNECTED') {
+                        // Opcional: una pequeña pausa para evitar el re-render instantáneo
+                        await new Promise(r => setTimeout(r, 1000)); 
                         await client.leave(); 
                     }
                 } catch (e) {
@@ -81,18 +95,21 @@ export const useAgoraAudio = (channelName, uidString) => {
         return () => {
             console.log(`[AGORA/CLEANUP] Limpiando recursos de Agora para el canal ${channelName}`);
             
+            // 1. Detener y cerrar la pista local usando la referencia
             const track = localTrackRef.current;
             if (track) {
                 track.close(); 
-                localTrackRef.current = null; 
+                localTrackRef.current = null;
             }
             
+            // 2. Desconectar el cliente de Agora
             if (client.connectionState === 'CONNECTED') {
                 client.leave().catch(err => {
                     console.warn("[AGORA/LEAVE_FAIL] Fallo al desconectar el cliente, pero se ignorará:", err);
                 });
             }
             
+            // 3. Resetear el estado de React 
             setIsConnected(false);
             setRemoteUsers([]);
         };
@@ -105,6 +122,7 @@ export const useAgoraAudio = (channelName, uidString) => {
             if (mediaType === 'audio') {
                 client.subscribe(user, mediaType).then(() => {
                     user.audioTrack.play();
+                    // Usar Set para evitar duplicados y lentitud
                     setRemoteUsers(prev => {
                         const newUsers = new Set(prev);
                         newUsers.add(user.uid);
@@ -117,6 +135,7 @@ export const useAgoraAudio = (channelName, uidString) => {
         };
 
         const handleUserUnpublished = (user) => {
+            // Limpieza de la lista al salir
             setRemoteUsers(prev => prev.filter(uid => uid !== user.uid));
         };
         
@@ -124,6 +143,7 @@ export const useAgoraAudio = (channelName, uidString) => {
         client.on('user-unpublished', handleUserUnpublished);
 
         return () => {
+            // DESCONECTAR LISTENERS
             client.off('user-published', handleUserPublished);
             client.off('user-unpublished', handleUserUnpublished);
         };

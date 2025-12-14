@@ -5,6 +5,10 @@
       "dest": "/api/$1"
     },
     {
+      "src": "/(assets/.*|vite.svg|index.html|favicon.ico)", 
+      "dest": "/$1" 
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }

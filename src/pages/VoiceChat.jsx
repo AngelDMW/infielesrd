@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'; 
 import { 
     collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, 
-    doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, getDoc 
+    doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, getDoc, runTransaction 
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { FaMicrophone, FaUsers, FaPlus, FaHeadset, FaSignOutAlt, FaUserCircle } from 'react-icons/fa'; 
@@ -11,24 +11,27 @@ import Loader from '../components/Loader';
 
 const MY_ID = getAnonymousID();
 
-// --- FUNCIONALIDAD PURA DE SALIDA (Fuera del componente para evitar closures) ---
+// Variable Global para manejar el "Anti-Rebote" de React Strict Mode
+let leaveTimer = null;
+
+// --- FUNCIÓN DE SALIDA SEGURA ---
 const performLeaveRoom = async (roomId) => {
     if (!roomId) return;
     try {
         const roomRef = doc(db, "voice_rooms", roomId);
         
-        // 1. INTENTO RÁPIDO: Sacar al usuario (arrayRemove es atómico y rápido)
+        // 1. Sacar al usuario
         await updateDoc(roomRef, {
             users: arrayRemove(MY_ID)
         });
 
-        // 2. LIMPIEZA: Verificar si quedó vacía para borrarla
-        // (Esto podría fallar si cierras la pestaña muy rápido, pero el paso 1 suele pasar)
+        // 2. Verificar si quedó vacía para borrarla
         const snap = await getDoc(roomRef);
         if (snap.exists()) {
             const users = snap.data().users || [];
             if (users.length === 0) {
                 await deleteDoc(roomRef);
+                console.log("Sala borrada por inactividad.");
             }
         }
     } catch (e) {
@@ -42,49 +45,63 @@ const ActiveRoom = ({ roomInitialData, onLeave }) => {
     const { isConnected, toggleMute } = useAgora(roomInitialData.id, MY_ID);
     const [isMuted, setIsMuted] = useState(false);
     
-    // Referencia para saber si ya salimos y evitar doble ejecución
-    const hasLeft = useRef(false);
+    // Referencia para saber si la salida fue manual (botón) o automática
+    const hasLeftManual = useRef(false);
 
-    // Escuchar cambios REALES en la lista de participantes
+    // 1. Escuchar cambios en la sala (Participantes)
     useEffect(() => {
         const roomRef = doc(db, "voice_rooms", roomInitialData.id);
         const unsub = onSnapshot(roomRef, (docSnap) => {
             if (docSnap.exists()) {
                 setRoomData({ id: docSnap.id, ...docSnap.data() });
             } else {
-                // Si la sala se borra externamente, nos saca
-                if (!hasLeft.current) onLeave(); 
+                // Si la sala desaparece, nos saca de la UI
+                if (!hasLeftManual.current) onLeave(); 
             }
         });
         return unsub;
     }, [roomInitialData.id, onLeave]);
 
-    // --- MANEJO ROBUSTO DE SALIDA Y DESMONTAJE ---
+    // 2. Lógica de Ciclo de Vida (Entrada/Salida Blindada)
     useEffect(() => {
         const roomId = roomInitialData.id;
 
-        // 1. Manejador para Cierre de Pestaña / Recarga (beforeunload)
-        const handleTabClose = (e) => { 
-            // Intentamos enviar la orden de salida antes de morir
-            performLeaveRoom(roomId);
-            // Nota: Los navegadores modernos a veces bloquean esto, pero es el mejor intento posible.
-        };
+        // A) AL MONTAR: Cancelamos cualquier salida pendiente (Fix Strict Mode)
+        if (leaveTimer) {
+            console.log("Cancelando salida automática (Reconexión detectada)");
+            clearTimeout(leaveTimer);
+            leaveTimer = null;
+        }
 
+        // B) MANEJAR CIERRE DE PESTAÑA (Esto debe ser inmediato)
+        const handleTabClose = () => { 
+            performLeaveRoom(roomId);
+        };
         window.addEventListener('beforeunload', handleTabClose);
 
-        // 2. Cleanup cuando el componente muere (Navegar atrás, Ir a Home, etc.)
+        // C) AL DESMONTAR: Programar salida con delay
         return () => {
             window.removeEventListener('beforeunload', handleTabClose);
-            if (!hasLeft.current) {
-                performLeaveRoom(roomId);
+            
+            // Si NO le dimos al botón de salir, asumimos que puede ser un refresh o navegación
+            // Esperamos 2 segundos antes de borrar al usuario.
+            if (!hasLeftManual.current) {
+                console.log("Programando salida automática en 2s...");
+                leaveTimer = setTimeout(() => {
+                    performLeaveRoom(roomId);
+                }, 2000); 
             }
         };
     }, [roomInitialData.id]);
 
     const handleManualLeave = async () => {
-        hasLeft.current = true; // Marcar que salimos voluntariamente
-        onLeave(); // Desmontar UI
-        await performLeaveRoom(roomInitialData.id); // Ejecutar lógica DB
+        hasLeftManual.current = true; // Marcamos que fue voluntario
+        onLeave(); // Desmontamos UI
+        
+        // Si hay un timer pendiente, lo limpiamos para ejecutar la salida YA
+        if (leaveTimer) clearTimeout(leaveTimer);
+        
+        await performLeaveRoom(roomInitialData.id); // Ejecutamos salida inmediata en DB
     };
 
     const handleMute = () => {
@@ -102,13 +119,11 @@ const ActiveRoom = ({ roomInitialData, onLeave }) => {
                 {roomData.name}
             </h2>
             
-            {/* Estado Conexión */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '30px', color: 'var(--text-secondary)' }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: isConnected ? '#2ecc71' : '#f1c40f' }}></div>
                 {isConnected ? "En vivo" : "Conectando..."}
             </div>
 
-            {/* Círculo Principal */}
             <div style={{ position: 'relative', marginBottom: '30px' }}>
                 <div style={{ 
                     width: 100, height: 100, borderRadius: '50%', 
@@ -119,7 +134,6 @@ const ActiveRoom = ({ roomInitialData, onLeave }) => {
                 </div>
             </div>
 
-            {/* Controles */}
             <div style={{ display: 'flex', gap: '20px', marginBottom: '40px' }}>
                 <button onClick={handleMute} style={{ padding: '15px', borderRadius: '50%', border: 'none', background: isMuted ? 'var(--text-secondary)' : 'var(--bg-body)', color: 'white', cursor: 'pointer', boxShadow: 'var(--shadow-sm)' }}>
                     <FaMicrophone size={20} />
@@ -129,7 +143,6 @@ const ActiveRoom = ({ roomInitialData, onLeave }) => {
                 </button>
             </div>
 
-            {/* LISTA DE PARTICIPANTES EN VIVO */}
             <div style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-body)', borderRadius: '16px', padding: '20px', boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.05)' }}>
                 <h3 style={{ margin: '0 0 15px 0', fontSize: '1rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <FaUsers /> Participantes ({roomData.users?.length || 0})
@@ -159,7 +172,6 @@ export default function VoiceChat() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Ordenar por fecha de creación para que las nuevas salgan arriba
         const q = query(collection(db, "voice_rooms"), orderBy("createdAt", "desc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const validRooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -170,19 +182,17 @@ export default function VoiceChat() {
     }, []);
 
     const joinRoom = async (room) => {
-        // Evitar unirse si ya estoy dentro (aunque la UI lo previene, es doble seguridad)
         if (room.users && room.users.includes(MY_ID)) {
-             setActiveRoomId(room.id); // Solo abrir la vista
+             setActiveRoomId(room.id);
              return;
         }
-
         try {
             const roomRef = doc(db, "voice_rooms", room.id);
             await updateDoc(roomRef, { users: arrayUnion(MY_ID) });
             setActiveRoomId(room.id);
         } catch (e) { 
             console.error(e); 
-            alert("No se pudo entrar. Tal vez la sala ya no existe."); 
+            alert("No se pudo entrar a la sala."); 
         }
     };
 
@@ -193,15 +203,13 @@ export default function VoiceChat() {
             const docRef = await addDoc(collection(db, "voice_rooms"), {
                 name: name.trim(),
                 createdAt: serverTimestamp(),
-                users: [MY_ID] // Me agrego automáticamente
+                users: [MY_ID] 
             });
             setActiveRoomId(docRef.id);
         } catch (e) { alert("Error creando sala"); }
     };
 
-    // Renderizar Sala Activa si estoy en una
     const activeRoomData = rooms.find(r => r.id === activeRoomId);
-    
     if (activeRoomData) {
         return (
             <ActiveRoom 
@@ -235,7 +243,6 @@ export default function VoiceChat() {
                                         <div style={{ width: 45, height: 45, borderRadius: '12px', background: 'rgba(2, 136, 209, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0288d1' }}><FaHeadset size={22} /></div>
                                         <div><h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)' }}>{room.name}</h3></div>
                                     </div>
-                                    {/* Badge LIVE */}
                                     <div style={{ background: '#e0f2f1', padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px', height: 'fit-content' }}>
                                         <div style={{width:6, height:6, background:'#00b894', borderRadius:'50%'}}></div>
                                         <span style={{fontSize:'0.65rem', fontWeight:700, color:'#00695c'}}>LIVE</span>

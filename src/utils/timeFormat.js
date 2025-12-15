@@ -1,33 +1,34 @@
-// src/utils/timeFormat.js - CÓDIGO FINAL
-
-// Transforma el timestamp de Firebase en un string legible y con hora.
+// src/utils/timeFormat.js
 export const formatTimeAgo = (timestamp) => {
     if (!timestamp) return 'Hace un ratico';
     
-    // Convertir el objeto Timestamp de Firebase a objeto Date
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     const now = new Date();
     const seconds = Math.floor((now - date) / 1000);
 
-    // Si es reciente (menos de 1 hora), usamos la hora exacta y "Hoy"
+    // Menos de 1 minuto
+    if (seconds < 60) return 'Hace un instante';
+    
+    // Menos de 1 hora
     if (seconds < 3600) {
         const minutes = Math.floor(seconds / 60);
-        if (minutes < 1) return 'Hace un instante';
-        if (minutes < 60) return `Hace ${minutes} min`;
+        return `Hace ${minutes} min`;
     }
     
-    // Si es hoy, mostramos la hora (Ej: 10:30 PM)
-    if (date.toDateString() === now.toDateString()) {
-        return `Hoy a las ${date.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    
-    // Si es ayer
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) {
-        return `Ayer a las ${date.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}`;
+    // Menos de 24 horas (Muestra hora relativa "Hace X horas")
+    if (seconds < 86400) {
+        const hours = Math.floor(seconds / 3600);
+        return `Hace ${hours}h`;
     }
 
-    // Para fechas más viejas, mostramos la fecha completa
-    return date.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
+    // Fecha Completa (Día Mes Año, Hora)
+    // Ejemplo: 15 dic 2023, 4:30 PM
+    return date.toLocaleDateString('es-DO', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric',
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+    });
 };

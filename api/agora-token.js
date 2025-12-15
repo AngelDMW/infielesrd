@@ -1,53 +1,66 @@
-// api/agora-token.js - CORREGIDO PARA VERCEL (Node.js Serverless)
+// api/agora-token.js - CORREGIDO Y ACTUALIZADO
+// Usamos la librería moderna 'agora-token' en lugar de la deprecada 'agora-access-token'
+const { RtcTokenBuilder, RtcRole } = require('agora-token');
 
-const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
-
-// 🏆 CORRECCIÓN CRÍTICA: La función debe exportarse directamente como handler (req, res) para Vercel
 module.exports = async (req, res) => {
-    
-    // Obtener las claves secretas de las variables de entorno de Vercel (SEGURIDAD)
-    const AGORA_APP_ID = process.env.AGORA_APP_ID;
-    const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
-    
-    // 🏆 CORRECCIÓN CRÍTICA: Los parámetros se obtienen de req.query en Vercel, no de event.queryStringParameters
-    const channelName = req.query.channel; 
-    const uidClientString = req.query.uid;
-    
-    if (!channelName || !uidClientString) {
-        // 🏆 CORRECCIÓN CRÍTICA: Usar res.status().json() para Vercel
-        return res.status(400).json({ error: 'Faltan parámetros de canal o UID.' });
-    }
+    // Configuración de CORS para permitir peticiones desde tu frontend
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    );
 
-    if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
-        console.error("VARIABLES DE ENTORNO AGORA FALTANTES O NO CONFIGURADAS");
-        // Devolver un error 500 para el frontend si las claves secretas no están definidas
-        return res.status(500).json({ error: 'La configuración de la APP ID o el CERTIFICATE del servidor es incorrecta.' });
+    // Manejo de preflight request (OPTIONS)
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
     }
-
-    // Configuración del Token
-    const uid = 0; // Usaremos 0 como UID numérico (como en tus pruebas)
-    const role = RtcRole.PUBLISHER; 
-    const expirationTimeInSeconds = 3600; // 1 hora
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
     try {
+        // Obtener credenciales de variables de entorno (Vercel)
+        // Soporta ambos nombres por compatibilidad
+        const AGORA_APP_ID = process.env.VITE_AGORA_APP_ID || process.env.AGORA_APP_ID;
+        const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
+
+        // Obtener parámetros del query string
+        const channelName = req.query.channel;
+        const uidStr = req.query.uid;
+
+        if (!channelName || !uidStr) {
+            return res.status(400).json({ error: 'Faltan parámetros: channel o uid son requeridos.' });
+        }
+
+        if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+            console.error("❌ Error: Faltan las credenciales de Agora en las variables de entorno.");
+            return res.status(500).json({ error: 'Error de configuración del servidor.' });
+        }
+
+        // Configuración del token
+        const role = RtcRole.PUBLISHER;
+        const expirationTimeInSeconds = 3600; // 1 hora
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+        
+        // Convertir UID a entero (o usar 0 si se prefiere que Agora lo asigne, pero mejor respetar el del cliente)
+        const uid = parseInt(uidStr) || 0;
+
         // Generar el Token
         const token = RtcTokenBuilder.buildTokenWithUid(
-            AGORA_APP_ID, 
-            AGORA_APP_CERTIFICATE, 
-            channelName, 
-            uid, 
-            role, 
+            AGORA_APP_ID,
+            AGORA_APP_CERTIFICATE,
+            channelName,
+            uid,
+            role,
             privilegeExpiredTs
         );
-        
-        // 🏆 CORRECCIÓN CRÍTICA: Usar res.status().json() para Vercel
-        return res.status(200).json({ token: token, uid: uid });
+
+        // Respuesta exitosa
+        return res.status(200).json({ token, uid });
 
     } catch (error) {
-        console.error("Error al generar el token de Agora:", error.message);
-        // Devolver un 500 si la generación del token falla por cualquier otra razón
-        return res.status(500).json({ error: 'Fallo interno al generar el token.' });
+        console.error("Error generando token:", error);
+        return res.status(500).json({ error: 'Error interno generando el token.' });
     }
 };

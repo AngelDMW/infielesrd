@@ -1,952 +1,327 @@
-// src/pages/StoryView.jsx - Versión Final Funcional (Corrección de Carga, Likes y Comentarios)
-
-import { useState, useEffect, useCallback } from "react";
-// 🏆 CORRECCIÓN CRÍTICA 1: Añadir 'useNavigate' para manejar redirecciones de historias no aprobadas
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  orderBy,
-  limit,
-  getDocs,
-  updateDoc,
-  increment,
-  deleteDoc,
-  setDoc,
-  serverTimestamp,
-  addDoc,
-  getCountFromServer,
-  runTransaction, // 🏆 CORRECCIÓN CRÍTICA 2: Añadir 'runTransaction' (necesario para la lógica de likes)
+  doc, getDoc, collection, query, orderBy, getDocs, updateDoc, increment, addDoc, runTransaction, serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { getAnonymousID } from "../utils/identity";
 import {
-  FaHeart,
-  FaCommentAlt,
-  FaRegClock,
-  FaUserSecret,
-  FaReply,
-  FaArrowLeft,
-  FaFlag,
-  FaChevronDown,
-  FaChevronUp,
-  FaSpinner,
+  FaHeart, FaRegHeart, FaArrowLeft, FaPaperPlane, FaFlag, FaShare, FaSpinner, FaUserSecret, FaReply, FaTimes
 } from "react-icons/fa";
-
 import { formatTimeAgo } from "../utils/timeFormat";
+import Loader from "../components/Loader";
 
-const TEMP_USER_ID = "ANON_SESSION_RD_123";
+const CURRENT_USER_ID = getAnonymousID();
 
-// Mapeo de categorías para mostrar la etiqueta
-const CATEGORY_MAP = {
-  infidelity: "Infidelidad",
-  confession: "Confesiones",
-  dating: "Citas",
-  uncategorized: "Bochinche",
+const CATEGORY_LABELS = {
+  infidelity: "💔 Infidelidad",
+  confession: "🤫 Confesión",
+  dating: "🔥 Citas",
+  uncategorized: "📢 Bochinche",
+  pending: "⏳ Revisión",
+  other: "👀 Varios"
 };
 
-// =========================================================================
-// 1. Componente: ReplyForm
-// =========================================================================
-
-const ReplyForm = ({
-  parentCommentId,
-  replyToReplyId,
-  storyId,
-  handleCommentUpdate,
-  onReplySuccess,
-}) => {
-  const [content, setContent] = useState("");
-
-  const handleReplySubmit = async (e) => {
-    e.preventDefault();
-    const trimmedContent = content.trim();
-    if (trimmedContent === "") return;
-
-    try {
-      const repliesRef = collection(
-        db,
-        "stories",
-        storyId,
-        "comments",
-        parentCommentId,
-        "replies"
-      );
-
-      const newReply = {
-        content: trimmedContent,
-        createdAt: serverTimestamp(),
-        parentReplyId: replyToReplyId,
-      };
-
-      await addDoc(repliesRef, newReply);
-      setContent("");
-
-      // Actualizar el comentario padre para refrescar la vista de replies
-      await updateDoc(
-        doc(db, "stories", storyId, "comments", parentCommentId),
-        {
-          repliesCount: increment(1),
-        }
-      );
-
-      // Llamar a la función de éxito para que el padre pueda cerrar el formulario
-      onReplySuccess();
-    } catch (error) {
-      console.error("Error al enviar la respuesta:", error);
-      alert("No se pudo enviar la respuesta.");
-    }
-  };
-
-  return (
-    <form
-      onSubmit={handleReplySubmit}
-      style={{
-        margin: "10px 0",
-        borderLeft: "3px solid var(--border)",
-        paddingLeft: "10px",
-      }}
-    >
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        placeholder={
-          replyToReplyId
-            ? "Respuesta a otro anónimo..."
-            : "Escribe una respuesta..."
-        }
-        rows="2"
-        style={{
-          width: "100%",
-          padding: "8px",
-          borderRadius: "8px",
-          border: "1px solid var(--card-border)",
-          background: "var(--secondary)",
-          color: "var(--text-main)",
-          resize: "vertical",
-          marginBottom: "5px",
-        }}
-      />
-      <button
-        type="submit"
-        className="btn-primary"
-        style={{ padding: "5px 10px", fontSize: "0.8rem", width: "auto" }}
-      >
-        Responder
-      </button>
-    </form>
-  );
+const getColorFromId = (id) => {
+    if (!id) return '#333'; 
+    const colors = ['#ce1126', '#002d62', '#e67e22', '#16a085', '#8e44ad', '#2980b9', '#c0392b'];
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
 };
 
-// =========================================================================
-// 2. Componente: CommentCard
-// =========================================================================
+const CommentItem = ({ comment, onReply, onReport }) => {
+    const [likes, setLikes] = useState(comment.likes || 0);
+    const [isLiked, setIsLiked] = useState(false);
 
-const CommentCard = ({
-  comment,
-  storyId,
-  handleReport,
-  handleCommentUpdate,
-}) => {
-  const [showReplies, setShowReplies] = useState(false);
-  const [replies, setReplies] = useState([]);
-  const [replyFormVisible, setReplyFormVisible] = useState(false);
-  const [replyToReplyId, setReplyToReplyId] = useState(null); // Para responder a una respuesta específica
-  const [isLoadingReplies, setIsLoadingReplies] = useState(false);
+    const handleLike = () => {
+        setIsLiked(!isLiked);
+        setLikes(prev => isLiked ? prev - 1 : prev + 1);
+    };
 
-  const loadReplies = useCallback(async () => {
-    if (!showReplies) return;
-    setIsLoadingReplies(true);
-    try {
-      const repliesRef = collection(
-        db,
-        "stories",
-        storyId,
-        "comments",
-        comment.id,
-        "replies"
-      );
-      const q = query(repliesRef, orderBy("createdAt", "asc"));
-      const snapshot = await getDocs(q);
+    const isMe = comment.authorId === CURRENT_USER_ID;
+    const avatarBg = isMe ? '#000000' : getColorFromId(comment.authorId);
 
-      // Mapear replies y asegurar que el id esté incluido
-      const loadedReplies = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        isReplyToReply: !!doc.data().parentReplyId,
-      }));
+    return (
+        <div style={{ marginBottom: '16px', padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                <div style={{ 
+                    minWidth: '36px', width: '36px', height: '36px', borderRadius: '50%', 
+                    backgroundColor: avatarBg, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    color: '#fff', fontSize: '14px', marginTop: '2px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}>
+                    {isMe ? 'Yo' : <FaUserSecret />}
+                </div>
+                
+                <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                            {isMe ? 'Tú' : 'Anónimo'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                            {formatTimeAgo(comment.createdAt)}
+                        </span>
+                    </div>
 
-      setReplies(loadedReplies);
-      handleCommentUpdate(comment.id, loadedReplies.length); // Actualizar count en el padre
-    } catch (error) {
-      console.error("Error al cargar respuestas:", error);
-    } finally {
-      setIsLoadingReplies(false);
-    }
-  }, [comment.id, storyId, showReplies, handleCommentUpdate]);
+                    {comment.replyTo && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                            Respondiendo a: <strong>{comment.replyTo}</strong>
+                        </div>
+                    )}
+                    
+                    <p style={{ margin: '0 0 8px 0', fontSize: '0.95rem', lineHeight: '1.4', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
+                        {comment.content}
+                    </p>
 
-  useEffect(() => {
-    loadReplies();
-  }, [loadReplies]);
-
-  const handleReplyTo = (replyId = null) => {
-    setReplyToReplyId(replyId);
-    setReplyFormVisible(true);
-  };
-
-  return (
-    <div className="comment-card">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "10px",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "0.9rem",
-            fontWeight: "bold",
-            color: "var(--primary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-          }}
-        >
-          <FaUserSecret /> Anónimo
-        </span>
-        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-          {formatTimeAgo(comment.createdAt)}
-        </span>
-      </div>
-
-      <p style={{ margin: "0 0 10px 0", whiteSpace: "pre-wrap" }}>
-        {comment.content}
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "15px",
-          fontSize: "0.85rem",
-          color: "var(--nav-link)",
-          alignItems: "center",
-        }}
-      >
-        <span
-          onClick={() => handleReplyTo()}
-          style={{
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-          }}
-        >
-          <FaReply /> Responder
-        </span>
-        <span
-          onClick={() =>
-            handleReport(
-              "comment",
-              comment.id,
-              comment.content.substring(0, 50)
-            )
-          }
-          style={{
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-          }}
-        >
-          <FaFlag /> Reportar
-        </span>
-
-        {/* Mostrar botón de respuestas solo si hay repliesCount > 0 o si se abre el formulario */}
-        {(comment.repliesCount > 0 || replies.length > 0) && (
-          <span
-            onClick={() => setShowReplies((prev) => !prev)}
-            style={{
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              marginLeft: "auto",
-            }}
-          >
-            {showReplies ? <FaChevronUp /> : <FaChevronDown />}
-            {comment.repliesCount || replies.length}{" "}
-            {comment.repliesCount === 1 ? "Respuesta" : "Respuestas"}
-          </span>
-        )}
-      </div>
-
-      {replyFormVisible && (
-        <ReplyForm
-          parentCommentId={comment.id}
-          replyToReplyId={replyToReplyId}
-          storyId={storyId}
-          handleCommentUpdate={handleCommentUpdate}
-          onReplySuccess={() => {
-            setReplyFormVisible(false);
-            loadReplies(); // Recargar replies después de un éxito
-          }}
-        />
-      )}
-
-      {showReplies && (
-        <div
-          style={{
-            marginTop: "15px",
-            borderLeft: "2px solid var(--card-border)",
-            paddingLeft: "10px",
-          }}
-        >
-          {isLoadingReplies && (
-            <p style={{ fontSize: "0.8rem", color: "var(--nav-link)" }}>
-              Cargando respuestas...
-            </p>
-          )}
-          {!isLoadingReplies && replies.length === 0 && (
-            <p style={{ fontSize: "0.8rem", color: "var(--nav-link)" }}>
-              No hay respuestas.
-            </p>
-          )}
-
-          {replies.map((reply) => (
-            <div
-              key={reply.id}
-              style={{
-                marginBottom: "10px",
-                padding: "5px",
-                background: "var(--secondary)",
-                borderRadius: "8px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: "0.8rem",
-                  marginBottom: "3px",
-                }}
-              >
-                <span
-                  style={{
-                    fontWeight: "bold",
-                    color: "var(--primary)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <FaUserSecret /> Anónimo
-                </span>
-                <span style={{ color: "var(--text-secondary)" }}>
-                  {formatTimeAgo(reply.createdAt)}
-                </span>
-              </div>
-              <p
-                style={{
-                  margin: "0 0 5px 0",
-                  fontSize: "0.9rem",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {reply.content}
-              </p>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  fontSize: "0.8rem",
-                  color: "var(--nav-link)",
-                }}
-              >
-                <span
-                  onClick={() => handleReplyTo(reply.id)}
-                  style={{
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <FaReply /> Responder
-                </span>
-                <span
-                  onClick={() =>
-                    handleReport(
-                      "reply",
-                      reply.id,
-                      reply.content.substring(0, 50)
-                    )
-                  }
-                  style={{
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <FaFlag /> Reportar
-                </span>
-              </div>
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <button onClick={handleLike} className="active-press" style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: isLiked ? 'var(--primary)' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 600 }}>
+                            {isLiked ? <FaHeart /> : <FaRegHeart />} {likes || 0}
+                        </button>
+                        <button onClick={() => onReply(comment)} style={{ background: 'none', border: 'none', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 600 }}>
+                            Responder
+                        </button>
+                        <button onClick={() => onReport(comment)} style={{ background: 'none', border: 'none', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', marginLeft: 'auto' }}>
+                            Reportar
+                        </button>
+                    </div>
+                </div>
             </div>
-          ))}
         </div>
-      )}
-    </div>
-  );
+    );
 };
-
-// =========================================================================
-// 3. Componente Principal: StoryView
-// =========================================================================
 
 export default function StoryView() {
   const { id } = useParams();
-  // 🏆 CORRECCIÓN CRÍTICA 3: Inicializar useNavigate
   const navigate = useNavigate();
-
+  
   const [story, setStory] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [comments, setComments] = useState([]);
   const [isLiked, setIsLiked] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [reportModal, setReportModal] = useState({
-    visible: false,
-    type: "",
-    id: "",
-    snippet: "",
-  });
-  const [reportReason, setReportReason] = useState("");
-  const [isReporting, setIsReporting] = useState(false);
-
-  // Función para actualizar el conteo de replies de un comentario
-  const handleCommentUpdate = useCallback((commentId, newRepliesCount) => {
-    setComments((prevComments) =>
-      prevComments.map((c) =>
-        c.id === commentId ? { ...c, repliesCount: newRepliesCount } : c
-      )
-    );
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // A. Lógica de Carga de Historia (fetchStory)
-  // -------------------------------------------------------------------------
-
-  const fetchStory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const storyRef = doc(db, "stories", id);
-      const storySnap = await getDoc(storyRef);
-
-      if (!storySnap.exists()) {
-        setError("La historia no existe o fue eliminada.");
-        setLoading(false);
-        return;
-      }
-
-      const storyData = storySnap.data();
-
-      // 🏆 CORRECCIÓN CRÍTICA 4: Verificar el estado de la historia (ESTO SOLUCIONA EL 404)
-      if (storyData.status !== "approved") {
-        setError(
-          "La historia no ha sido publicada o fue eliminada por el administrador."
-        );
-        setLoading(false);
-        // Opcional: Redirigir al inicio o a una página de 404
-        // navigate('/404', { replace: true });
-        return;
-      }
-
-      setStory({ id: storySnap.id, ...storyData });
-      // Incrementar las vistas solo una vez por sesión anónima (simulado)
-
-      const sessionKey = `viewed_${id}`;
-
-      if (!sessionStorage.getItem(sessionKey)) {
-        sessionStorage.setItem(sessionKey, "true");
-      }
-
-      // Comprobar si el usuario actual le dio 'like' (simulado)
-      const likedKey = `liked_${id}_${TEMP_USER_ID}`;
-      setIsLiked(!!localStorage.getItem(likedKey));
-      // -------------------------------------------------------------------------
-      // B. Lógica de Carga de Comentarios
-      // -------------------------------------------------------------------------
-      const commentsRef = collection(db, "stories", id, "comments");
-      const q = query(commentsRef, orderBy("createdAt", "desc"));
-      const commentsSnapshot = await getDocs(q);
-
-      const loadedComments = commentsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        repliesCount: doc.data().repliesCount || 0, // Asegurar que el conteo existe
-      }));
-      setComments(loadedComments);
-    } catch (err) {
-      console.error("Error al cargar la historia:", err);
-      setError(
-        "Ocurrió un error al intentar cargar la historia. Intenta más tarde."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [id, navigate]); // Añadir navigate a las dependencias
+  const [loading, setLoading] = useState(true);
+  
+  const [commentText, setCommentText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [animateLike, setAnimateLike] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null); 
+  
+  const scrollRef = useRef(null);
 
   useEffect(() => {
-    fetchStory();
-  }, [fetchStory]);
+    const fetchStory = async () => {
+      try {
+        const docRef = doc(db, "stories", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return navigate("/404");
 
-  // -------------------------------------------------------------------------
-  // C. Lógica de Likes (runTransaction)
-  // -------------------------------------------------------------------------
+        setStory({ id: docSnap.id, ...docSnap.data() });
+        const likedKey = `liked_${id}_${CURRENT_USER_ID}`;
+        setIsLiked(!!localStorage.getItem(likedKey));
+
+        const qComments = query(collection(db, "stories", id, "comments"), orderBy("createdAt", "asc"));
+        const commentsSnap = await getDocs(qComments);
+        setComments(commentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) { console.error(error); } 
+      finally { setLoading(false); }
+    };
+    fetchStory();
+  }, [id, navigate]);
 
   const handleLike = async () => {
-    if (!story) return;
+    const prevLiked = isLiked;
+    setIsLiked(!prevLiked);
+    setAnimateLike(true); setTimeout(() => setAnimateLike(false), 300);
+    setStory(prev => ({ ...prev, likes: prevLiked ? (prev.likes - 1) : (prev.likes + 1) }));
 
-    const storyRef = doc(db, "stories", story.id);
-    const likedKey = `liked_${story.id}_${TEMP_USER_ID}`;
+    const storyRef = doc(db, "stories", id);
+    const likedKey = `liked_${id}_${CURRENT_USER_ID}`;
+    if (!prevLiked) localStorage.setItem(likedKey, "true");
+    else localStorage.removeItem(likedKey);
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const storyDoc = await transaction.get(storyRef);
-        if (!storyDoc.exists()) {
-          throw "Story does not exist!";
-        }
-
-        let newLikes;
-        if (isLiked) {
-          newLikes = (storyDoc.data().likes || 0) - 1;
-          transaction.update(storyRef, { likes: increment(-1) });
-          localStorage.removeItem(likedKey);
-        } else {
-          newLikes = (storyDoc.data().likes || 0) + 1;
-          transaction.update(storyRef, { likes: increment(1) });
-          localStorage.setItem(likedKey, "true");
-        }
-
-        // Actualizar el estado local para reflejar el cambio inmediatamente
-        setStory((prev) => ({ ...prev, likes: newLikes }));
-        setIsLiked((prev) => !prev);
+      await runTransaction(db, async (t) => {
+        const sfDoc = await t.get(storyRef);
+        if (sfDoc.exists()) t.update(storyRef, { likes: prevLiked ? increment(-1) : increment(1) });
       });
-    } catch (e) {
-      console.error("Transaction failed: ", e);
-      alert("No se pudo actualizar el like. Intenta de nuevo.");
+    } catch (e) { console.error(e); }
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+        navigator.share({ title: "InfielesRD", text: `🔥 ${story.title}`, url: window.location.href });
+    } else {
+        navigator.clipboard.writeText(window.location.href);
+        alert("Enlace copiado! 📋");
     }
   };
 
-  // -------------------------------------------------------------------------
-  // D. Lógica de Comentarios (Add Comment)
-  // -------------------------------------------------------------------------
+  const handleReport = () => {
+      if(window.confirm("¿Deseas reportar esta historia?")) {
+          alert("Gracias por reportar. Revisaremos el contenido.");
+      }
+  };
 
-  const handleCommentSubmit = async (e) => {
+  const handleSendComment = async (e) => {
     e.preventDefault();
-    const trimmedComment = newComment.trim();
-    if (trimmedComment === "" || !story) return;
-
+    if (!commentText.trim()) return;
+    setIsSending(true);
     try {
-      const commentsRef = collection(db, "stories", story.id, "comments");
-
-      const newCommentData = {
-        content: trimmedComment,
-        createdAt: serverTimestamp(),
-        // Se añadirá el ID del comentario en el front para facilitar la navegación a las replies
-        repliesCount: 0,
+      const newComment = {
+        content: commentText.trim(), 
+        authorId: CURRENT_USER_ID, 
+        createdAt: serverTimestamp(), 
+        likes: 0,
+        replyTo: replyingTo ? (replyingTo.authorId === CURRENT_USER_ID ? 'Ti mismo' : 'Anónimo') : null
       };
-
-      const docRef = await addDoc(commentsRef, newCommentData);
-
-      // Actualizar la lista de comentarios en el estado local inmediatamente
-      setComments((prev) => [
-        {
-          id: docRef.id,
-          ...newCommentData,
-          createdAt: { toDate: () => new Date() },
-        }, // Usar una estructura de Date para el formato en el front
-        ...prev,
-      ]);
-
-      setNewComment("");
-
-      // Opcional: actualizar el conteo de comentarios en el documento principal de la historia
-      await updateDoc(doc(db, "stories", story.id), {
-        commentsCount: increment(1),
-      });
-
-      // Actualizar el estado local de la historia con el nuevo conteo
-      setStory((prev) => ({
-        ...prev,
-        commentsCount: (prev.commentsCount || 0) + 1,
-      }));
-    } catch (error) {
-      console.error("Error al enviar el comentario:", error);
-      alert("No se pudo enviar el comentario. Intenta de nuevo.");
-    }
+      
+      const docRef = await addDoc(collection(db, "stories", id, "comments"), newComment);
+      await updateDoc(doc(db, "stories", id), { commentsCount: increment(1) });
+      
+      setComments(prev => [...prev, { id: docRef.id, ...newComment, createdAt: new Date() }]);
+      setStory(prev => ({ ...prev, commentsCount: (prev.commentsCount || 0) + 1 }));
+      setCommentText("");
+      setReplyingTo(null); 
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (err) { alert("Error al comentar"); } 
+    finally { setIsSending(false); }
   };
 
-  // -------------------------------------------------------------------------
-  // E. Lógica de Reporte (Modal/Submit)
-  // -------------------------------------------------------------------------
-
-  const handleReport = (type, contentId, snippet) => {
-    setReportModal({ visible: true, type, id: contentId, snippet });
-    setReportReason("");
-  };
-
-  const submitReport = async (e) => {
-    e.preventDefault();
-    if (!reportReason.trim()) return;
-
-    setIsReporting(true);
-    try {
-      await addDoc(collection(db, "reports"), {
-        storyId: story.id,
-        type: reportModal.type, // 'story', 'comment', 'reply'
-        contentId: reportModal.id,
-        reason: reportReason.trim(),
-        reportedAt: serverTimestamp(),
-        contentSnippet: reportModal.snippet, // Guardar un fragmento para el admin
-      });
-
-      alert("Reporte enviado con éxito. Gracias por tu ayuda.");
-      setReportModal({ visible: false, type: "", id: "", snippet: "" });
-    } catch (error) {
-      console.error("Error al enviar reporte:", error);
-      alert("Fallo al enviar el reporte. Intenta de nuevo.");
-    } finally {
-      setIsReporting(false);
-    }
-  };
-
-  // -------------------------------------------------------------------------
-  // F. Renderizado (Loader, Error, Contenido)
-  // -------------------------------------------------------------------------
-
-  if (loading) {
-    return (
-      <div
-        className="page-content"
-        style={{ textAlign: "center", paddingTop: "50px" }}
-      >
-        <FaSpinner
-          className="spinner"
-          size={30}
-          style={{ color: "var(--primary)" }}
-        />
-        <p>Cargando chisme...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div
-        className="page-content"
-        style={{ textAlign: "center", paddingTop: "50px" }}
-      >
-        <h1 style={{ color: "var(--error-color)" }}>¡Error!</h1>
-        <p style={{ marginBottom: "20px" }}>{error}</p>
-        <Link
-          to="/"
-          className="btn-primary"
-          style={{ padding: "10px 20px", textDecoration: "none" }}
-        >
-          <FaArrowLeft style={{ marginRight: "5px" }} /> Volver al Inicio
-        </Link>
-      </div>
-    );
-  }
-
-  if (!story) {
-    return null; // No debería suceder si el error se maneja arriba
-  }
-
-  const categoryLabel = CATEGORY_MAP[story.category] || "Bochinche";
-
-  // -------------------------------------------------------------------------
-  // MODAL DE REPORTE (Renderizado flotante)
-  // -------------------------------------------------------------------------
-
-  const ReportModal = () => (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(0,0,0,0.7)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 1000,
-      }}
-    >
-      <form
-        onSubmit={submitReport}
-        className="card"
-        style={{
-          padding: "20px",
-          width: "90%",
-          maxWidth: "400px",
-          margin: "20px",
-        }}
-      >
-        <h2>Reportar Contenido 🚨</h2>
-        <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}>
-          Estás reportando{" "}
-          {reportModal.type === "story"
-            ? "la historia"
-            : `el ${reportModal.type}`}{" "}
-          con fragmento:
-          <em style={{ display: "block", margin: "5px 0", fontWeight: "bold" }}>
-            &quot;{reportModal.snippet}...&quot;
-          </em>
-        </p>
-
-        <textarea
-          value={reportReason}
-          onChange={(e) => setReportReason(e.target.value)}
-          placeholder="Escribe el motivo del reporte (requerido)..."
-          rows="3"
-          required
-          style={{
-            width: "100%",
-            padding: "10px",
-            borderRadius: "8px",
-            border: "1px solid var(--border)",
-            background: "var(--secondary)",
-            color: "var(--text-main)",
-            resize: "vertical",
-            marginBottom: "10px",
-          }}
-        />
-
-        <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
-          <button
-            type="button"
-            onClick={() => setReportModal({ visible: false })}
-            className="btn-secondary"
-            style={{ flexGrow: 1, padding: "10px" }}
-            disabled={isReporting}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            style={{ flexGrow: 2, padding: "10px" }}
-            disabled={isReporting || !reportReason.trim()}
-          >
-            {isReporting ? <FaSpinner className="spinner" /> : "Enviar Reporte"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-
-  // -------------------------------------------------------------------------
-  // VISTA PRINCIPAL
-  // -------------------------------------------------------------------------
+  if (loading) return <div style={{paddingTop: 100}}><Loader /></div>;
+  if (!story) return null;
 
   return (
-    <div className="page-content">
-      {reportModal.visible && <ReportModal />}
-
-      {/* Header de Historia */}
-      <div
-        className="story-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "15px",
-        }}
-      >
-        <Link
-          to="/stories"
-          style={{
-            textDecoration: "none",
-            color: "var(--primary)",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            fontWeight: "bold",
-          }}
-        >
-          <FaArrowLeft /> Archivo
-        </Link>
-        <span
-          style={{
-            background: "var(--primary)",
-            color: "white",
-            padding: "5px 10px",
-            borderRadius: "20px",
-            fontSize: "0.8rem",
-            fontWeight: "bold",
-          }}
-        >
-          {categoryLabel}
-        </span>
-      </div>
-
-      {/* Contenido de Historia */}
-      <h1 className="story-title">{story.title}</h1>
-
-      <div
-        className="story-meta"
-        style={{
-          display: "flex",
-          gap: "15px",
-          fontSize: "0.9rem",
-          color: "var(--text-secondary)",
-          marginBottom: "20px",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <FaRegClock /> {formatTimeAgo(story.publishedAt)}
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <FaUserSecret /> Anónimo
-        </span>
-      </div>
-
-      <div className="story-content">
-        {/* Usar whiteSpace: 'pre-wrap' para respetar saltos de línea y formato */}
-        <p style={{ whiteSpace: "pre-wrap" }}>{story.content}</p>
-      </div>
-
-      {/* Acciones y Reporte de Historia */}
-      <div
-        className="story-actions"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "15px 0",
-          borderTop: "1px solid var(--border)",
-          borderBottom: "1px solid var(--border)",
-          margin: "20px 0",
-        }}
-      >
-        <button
-          onClick={handleLike}
-          style={{
-            background: "none",
-            border: "none",
-            color: isLiked ? "var(--primary)" : "var(--nav-link)",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            cursor: "pointer",
-            fontSize: "1rem",
-            fontWeight: "bold",
-          }}
-        >
-          <FaHeart size={20} />
-          {story.likes || 0} Me Gusta
-        </button>
-
-        <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              color: "var(--nav-link)",
-              fontSize: "1rem",
-              fontWeight: "bold",
-            }}
-          >
-            <FaCommentAlt size={20} />
-            {story.commentsCount || 0} Comentarios
-          </span>
-          <button
-            onClick={() => handleReport("story", story.id, story.title)}
-            style={{
-              background: "none",
-              border: "1px solid var(--error-color)",
-              color: "var(--error-color)",
-              padding: "5px 10px",
-              borderRadius: "15px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              cursor: "pointer",
-              fontSize: "0.9rem",
-            }}
-          >
-            <FaFlag /> Reportar
+    <div className="fade-in" style={{ paddingBottom: '100px', position: 'relative' }}>
+      
+      {/* --- BOTÓN DE VOLVER FLOTANTE PERO INTEGRADO --- */}
+      {/* Usamos position: sticky para que se quede arriba mientras scrolleas,
+          pero dentro del flujo del contenedor (no fixed global).
+      */}
+      <div style={{ 
+          position: 'sticky', top: 0, zIndex: 50, 
+          padding: '10px 0', 
+          background: 'var(--bg-app)', // El mismo color del fondo de la app para que se mezcle
+          display: 'flex', alignItems: 'center'
+      }}>
+          <button onClick={() => navigate(-1)} className="active-press" style={{ 
+              background: 'var(--surface)', 
+              border: '1px solid var(--border-subtle)', 
+              borderRadius: '50%', width: 40, height: 40, 
+              fontSize: '1.1rem', cursor: 'pointer', color: 'var(--text-main)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center', 
+              boxShadow: 'var(--shadow-sm)',
+              marginLeft: '20px' // Margen seguro
+          }}>
+            <FaArrowLeft />
           </button>
-        </div>
       </div>
 
-      {/* Sección de Comentarios */}
-      <h2
-        style={{
-          fontSize: "1.5rem",
-          marginTop: "30px",
-          marginBottom: "20px",
-          borderBottom: "2px solid var(--primary)",
-          paddingBottom: "5px",
-        }}
-      >
-        <FaCommentAlt
-          style={{ marginRight: "10px", color: "var(--primary)" }}
-        />{" "}
-        Comentarios
-      </h2>
+      {/* CONTENIDO PRINCIPAL */}
+      <main style={{ padding: '0 20px' }}>
+        
+        {/* Info Autor y Categoría */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ 
+                    width: 48, height: 48, borderRadius: '50%', 
+                    background: 'linear-gradient(135deg, #ce1126 0%, #002d62 100%)', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    color: 'white', fontSize: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
+                }}>
+                    <FaUserSecret />
+                </div>
+                <div>
+                    <span style={{ fontWeight: 700, fontSize: '1rem', display: 'block', color: 'var(--text-main)' }}>Anónimo</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{formatTimeAgo(story.publishedAt)}</span>
+                </div>
+            </div>
+            <div style={{ background: 'var(--bg-body)', padding: '6px 12px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', border: '1px solid var(--border-subtle)' }}>
+                {CATEGORY_LABELS[story.category] || "Historia"}
+            </div>
+        </div>
 
-      {/* Formulario de Comentario */}
-      <form onSubmit={handleCommentSubmit} style={{ marginBottom: "40px" }}>
-        <textarea
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Suelta tu opinión (Anónimo)..."
-          rows="3"
-          style={{
-            width: "100%",
-            padding: "15px",
-            borderRadius: "15px",
-            border: "1px solid var(--border)",
-            background: "var(--surface)",
-            color: "var(--text-main)",
-            resize: "none",
-            marginBottom: "10px",
-          }}
-        />
-        <button
-          type="submit"
-          className="btn-primary"
-          style={{ width: "100%", padding: "12px" }}
-        >
-          Enviar Comentario
-        </button>
-      </form>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, lineHeight: 1.2, marginBottom: '20px', color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
+            {story.title}
+        </h1>
+        
+        <div style={{ fontSize: '1.15rem', lineHeight: 1.8, color: 'var(--text-main)', whiteSpace: 'pre-wrap', marginBottom: '40px', fontFamily: 'Georgia, serif' }}>
+          {story.content}
+        </div>
 
-      <div className="comments-list">
-        {comments.length > 0 ? (
-          comments.map((comment) => (
-            <CommentCard
-              key={comment.id}
-              comment={comment}
-              storyId={id}
-              handleReport={handleReport}
-              handleCommentUpdate={handleCommentUpdate}
-            />
-          ))
-        ) : (
-          <p style={{ textAlign: "center", color: "var(--text-secondary)" }}>
-            Sé el primero en comentar este chisme.
-          </p>
-        )}
+        {/* BARRA DE ACCIONES */}
+        <div style={{ 
+            display: 'flex', gap: '10px', padding: '15px', 
+            background: 'var(--surface)', borderRadius: '16px',
+            border: '1px solid var(--border-subtle)', marginBottom: '30px',
+            boxShadow: 'var(--shadow-sm)'
+        }}>
+           <button onClick={handleLike} className="active-press" style={{ flex: 2, background: isLiked ? 'rgba(217,4,41,0.08)' : 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: isLiked ? 'var(--primary)' : 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
+               <div style={{ transform: animateLike ? 'scale(1.4)' : 'scale(1)', transition: '0.2s' }}>{isLiked ? <FaHeart size={20} /> : <FaRegHeart size={20} />}</div>
+               {story.likes || 0}
+           </button>
+
+           <button onClick={handleShare} className="active-press" style={{ flex: 2, background: 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-main)', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+               <FaShare size={18} />
+           </button>
+
+           <button onClick={handleReport} className="active-press" style={{ flex: 1, background: 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+               <FaFlag size={18} />
+           </button>
+        </div>
+
+        {/* Comentarios */}
+        <div>
+            <h3 style={{ marginBottom: '20px', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                Comentarios ({story.commentsCount || 0})
+            </h3>
+            
+            {comments.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <p>Sé el primero en opinar 👇</p>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {comments.map(c => (
+                        <CommentItem 
+                            key={c.id} 
+                            comment={c} 
+                            onReply={(comment) => setReplyingTo(comment)} 
+                            onReport={() => alert("Comentario reportado.")}
+                        />
+                    ))}
+                </div>
+            )}
+            <div ref={scrollRef} />
+        </div>
+      </main>
+
+      {/* Input Flotante */}
+      <div style={{
+          position: 'fixed', bottom: 0, 
+          width: '100%', maxWidth: 'var(--max-feed-width)',
+          left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--surface)', 
+          borderTop: '1px solid var(--border-subtle)',
+          zIndex: 100,
+          paddingBottom: 'env(safe-area-inset-bottom)'
+      }}>
+          {replyingTo && (
+              <div style={{ padding: '8px 20px', background: 'var(--bg-body)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><FaReply /> Respondiendo a <strong>{replyingTo.authorId === CURRENT_USER_ID ? 'ti mismo' : 'Anónimo'}</strong></span>
+                  <button onClick={() => setReplyingTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-main)' }}><FaTimes /></button>
+              </div>
+          )}
+
+          <div style={{ padding: '15px 20px', display: 'flex', gap: '10px' }}>
+              <input 
+                type="text" value={commentText} onChange={e => setCommentText(e.target.value)}
+                placeholder={replyingTo ? "Escribe tu respuesta..." : "Escribe un comentario..."}
+                style={{ flex: 1, padding: '14px 20px', borderRadius: '30px', border: '1px solid var(--border-subtle)', background: 'var(--bg-body)', outline: 'none', fontSize: '0.95rem', color: 'var(--text-main)' }}
+              />
+              <button onClick={handleSendComment} disabled={!commentText.trim() || isSending} style={{ background: 'var(--primary)', color: 'white', border: 'none', width: 50, height: 50, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: !commentText.trim() ? 0.5 : 1, boxShadow: '0 4px 10px rgba(206, 17, 38, 0.3)' }}>
+                  {isSending ? <FaSpinner className="spin-icon" /> : <FaPaperPlane />}
+              </button>
+          </div>
       </div>
     </div>
   );

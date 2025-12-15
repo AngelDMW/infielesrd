@@ -1,62 +1,19 @@
-// src/pages/Stories.jsx - Versión Corregida con Filtro Aprobado y Categorías
-
-import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, orderBy, limit, getDocs, startAfter, getCountFromServer } from "firebase/firestore";
+import { useState, useEffect } from 'react';
+import { collection, query, where, orderBy, limit, getDocs, startAfter } from "firebase/firestore";
 import { db } from "../firebase";
-import { Link } from 'react-router-dom';
-import { FaBookOpen, FaFilter, FaHeart, FaCommentAlt, FaRegClock, FaSearch, FaTags } from 'react-icons/fa';
-import { formatTimeAgo } from '../utils/timeFormat'; 
+import { FaCompass, FaSearch } from 'react-icons/fa';
+import FeedCard from '../components/FeedCard'; // ✅ Usamos la tarjeta rica visualmente
 import Loader from '../components/Loader';
+import { Link } from 'react-router-dom';
 
-// Mapeo simple de categorías para mostrar la etiqueta de forma legible
+// Mapeo simple de categorías
 const CATEGORY_MAP = {
     infidelity: "Infidelidad",
     confession: "Confesiones",
     dating: "Citas",
     uncategorized: "Otros",
-    pending: "Pendiente" // Aunque no debería mostrarse, se deja por seguridad
+    other: "Varios"
 };
-
-// Tarjeta de Historia para el Feed (Corregida)
-const StoryFeedItem = ({ story }) => {
-    const categoryLabel = CATEGORY_MAP[story.category] || 'Bochinche';
-
-    return (
-        <Link to={`/story/${story.id}`} style={{textDecoration: 'none', color: 'inherit'}}>
-            <div className="card fade-in" style={{
-                marginBottom: '20px', 
-                padding: '25px', 
-                borderLeft: '5px solid var(--primary)' // Estilo moderno
-            }}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-                    <span style={{fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px'}}>
-                        <FaRegClock /> {formatTimeAgo(story.publishedAt)}
-                    </span>
-                    {/* CRÍTICO: Mostrar la categoría real */}
-                    <span style={{background: 'var(--primary)', color: 'white', padding: '4px 8px', borderRadius: '15px', fontSize: '0.7rem', fontWeight: 'bold'}}>
-                        {categoryLabel}
-                    </span>
-                </div>
-
-                <h2 className="story-title-list">{story.title}</h2>
-
-                {/* Resumen de estadísticas */}
-                <div style={{display: 'flex', gap: '15px', marginTop: '15px', fontSize: '0.9rem', color: 'var(--text-secondary)'}}>
-                    <span style={{display: 'flex', alignItems: 'center', gap: '5px'}}>
-                        <FaHeart style={{color: 'var(--primary)'}} /> {story.likes || 0}
-                    </span>
-                    <span style={{display: 'flex', alignItems: 'center', gap: '5px'}}>
-                        <FaCommentAlt /> {story.commentsCount || 0}
-                    </span>
-                </div>
-            </div>
-        </Link>
-    );
-};
-
-// =========================================================================
-// Stories Page (Corregida)
-// =========================================================================
 
 const STORIES_PER_PAGE = 10;
 
@@ -64,136 +21,114 @@ export default function Stories() {
     const [stories, setStories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [lastVisible, setLastVisible] = useState(null);
-    const [searchTerm, setSearchTerm] = useState(''); // Estado para el buscador
-    const [selectedCategory, setSelectedCategory] = useState('all'); // Estado para el filtro
+    const [selectedCategory, setSelectedCategory] = useState('all');
 
     const loadStories = async (isInitialLoad = true) => {
         setLoading(true);
         try {
-            let q;
-            const collectionRef = collection(db, "stories");
+            const baseQuery = [where("status", "==", "approved")];
+            if (selectedCategory !== 'all') baseQuery.push(where("category", "==", selectedCategory));
             
-            // 1. Construir la consulta de base
-            let baseQuery = [
-                // CRÍTICO: SOLO mostrar historias aprobadas
-                where("status", "==", "approved") 
-            ];
-
-            // 2. Aplicar filtro de categoría si no es 'all'
-            if (selectedCategory !== 'all') {
-                 baseQuery.push(where("category", "==", selectedCategory));
-            }
-            
-            // 3. Aplicar ordenamiento
             baseQuery.push(orderBy("publishedAt", "desc"));
-            
-            // 4. Aplicar paginación
-            if (!isInitialLoad && lastVisible) {
-                baseQuery.push(startAfter(lastVisible));
-            }
-            
+            if (!isInitialLoad && lastVisible) baseQuery.push(startAfter(lastVisible));
             baseQuery.push(limit(STORIES_PER_PAGE));
             
-            q = query(collectionRef, ...baseQuery);
-
-            const documentSnapshots = await getDocs(q);
+            const q = query(collection(db, "stories"), ...baseQuery);
+            const snapshots = await getDocs(q);
             
-            const newStories = documentSnapshots.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            // Actualizar estado
-            setStories(prevStories => isInitialLoad ? newStories : [...prevStories, ...newStories]);
-            
-            // Guardar el último documento visible para la próxima carga
-            setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
+            const newStories = snapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setStories(prev => isInitialLoad ? newStories : [...prev, ...newStories]);
+            setLastVisible(snapshots.docs[snapshots.docs.length - 1]);
             
         } catch (error) {
-            console.error("Error al cargar historias:", error);
-            // Podrías establecer un estado de error para el usuario aquí
+            console.error("Error cargando historias:", error);
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        loadStories(true);
-    }, [selectedCategory]); // Recargar cada vez que cambie el filtro
-
-    // Función para manejar la búsqueda en el lado del cliente (para simplicidad)
-    // Usamos useMemo para no recalcular la lista en cada render
-    const filteredStories = useMemo(() => {
-        if (!searchTerm) {
-            return stories;
-        }
-        const term = searchTerm.toLowerCase();
-        return stories.filter(story => 
-            story.title.toLowerCase().includes(term) || 
-            story.content.toLowerCase().includes(term)
-        );
-    }, [stories, searchTerm]);
-
-    const handleCategoryChange = (e) => {
-        setSelectedCategory(e.target.value);
-    };
+    useEffect(() => { loadStories(true); }, [selectedCategory]);
 
     return (
-        <div className="page-content">
-            <h1 className="section-title"><FaBookOpen /> Archivo de Historias</h1>
-            
-            {/* BARRA DE BÚSQUEDA Y FILTRO */}
-            <div className="stories-search-bar" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                    <FaSearch style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--nav-link)' }} />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar historias por título o contenido..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{ width: '100%', padding: '12px 12px 12px 40px', borderRadius: '10px', border: '1px solid var(--card-border)', background: 'var(--secondary)', color: 'var(--text)' }}
-                    />
+        <div className="fade-in">
+            {/* Header de la Sección */}
+            <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ background: 'var(--surface)', padding: '10px', borderRadius: '50%', boxShadow: 'var(--shadow-sm)' }}>
+                        <FaCompass size={20} color="var(--primary)" />
+                    </div>
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>Explorar</h1>
                 </div>
                 
-                <select 
-                    value={selectedCategory} 
-                    onChange={handleCategoryChange} 
-                    style={{ 
-                        padding: '10px 15px', 
-                        borderRadius: '10px', 
-                        border: '1px solid var(--card-border)', 
-                        background: 'var(--secondary)', 
-                        color: 'var(--text)',
-                        fontWeight: '600'
-                    }}
-                >
-                    <option value="all">Todas</option>
-                    <option value="infidelity">{CATEGORY_MAP.infidelity}</option>
-                    <option value="confession">{CATEGORY_MAP.confession}</option>
-                    <option value="dating">{CATEGORY_MAP.dating}</option>
-                    <option value="uncategorized">{CATEGORY_MAP.uncategorized}</option>
-                </select>
+                {/* Botón Buscar */}
+                <Link to="/search" style={{ 
+                    background: 'var(--surface)', padding: '10px', borderRadius: '50%', 
+                    boxShadow: 'var(--shadow-sm)', color: 'var(--text-secondary)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <FaSearch />
+                </Link>
             </div>
 
+            {/* Filtros */}
+            <div style={{ 
+                display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '15px', 
+                marginBottom: '10px', scrollbarWidth: 'none'
+            }}>
+                <button 
+                    onClick={() => setSelectedCategory('all')}
+                    style={{ 
+                        padding: '8px 16px', borderRadius: '20px', border: 'none',
+                        background: selectedCategory === 'all' ? 'var(--text-main)' : 'var(--surface)',
+                        color: selectedCategory === 'all' ? 'var(--surface)' : 'var(--text-main)',
+                        fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', flexShrink: 0,
+                        boxShadow: 'var(--shadow-sm)'
+                    }}
+                >
+                    Todo
+                </button>
+                {Object.entries(CATEGORY_MAP).map(([key, label]) => (
+                    <button 
+                        key={key} 
+                        onClick={() => setSelectedCategory(key)}
+                        style={{ 
+                            padding: '8px 16px', borderRadius: '20px', border: 'none',
+                            background: selectedCategory === key ? 'var(--text-main)' : 'var(--surface)',
+                            color: selectedCategory === key ? 'var(--surface)' : 'var(--text-main)',
+                            fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', flexShrink: 0,
+                            boxShadow: 'var(--shadow-sm)'
+                        }}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
 
-            {/* MENSAJE DE SIN RESULTADOS */}
-            {filteredStories.length === 0 && !loading && (
-                <p style={{textAlign: 'center', marginTop: '50px', color: 'var(--text-secondary)'}}>
-                    {searchTerm ? `No se encontraron resultados para "${searchTerm}".` : 'No hay historias publicadas aún. ¡Sé el primero!'}
-                </p>
-            )}
+            {/* Lista de Historias (Feed Cards Ricas) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {stories.length === 0 && !loading && (
+                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        No encontramos historias en esta categoría.
+                    </div>
+                )}
+                
+                {stories.map(story => (
+                    <FeedCard key={story.id} story={story} />
+                ))}
+            </div>
             
-            {/* LISTA DE HISTORIAS */}
-            {filteredStories.map(story => <StoryFeedItem key={story.id} story={story} />)}
+            {loading && <div style={{padding: 20}}><Loader /></div>}
             
-            {/* LOADER Y BOTÓN DE CARGAR MÁS */}
-            {loading && <Loader message="Buscando más chismes..." />}
-            
-            {!loading && lastVisible && !searchTerm && ( 
+            {!loading && lastVisible && ( 
                 <button 
                     onClick={() => loadStories(false)} 
-                    className="btn-primary"
-                    style={{width: '100%', marginTop: '20px', padding: '15px'}}
+                    className="active-press"
+                    style={{
+                        width: '100%', marginTop: '20px', padding: '15px',
+                        background: 'var(--surface)', border: '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-lg)', color: 'var(--text-main)', fontWeight: 600,
+                        cursor: 'pointer'
+                    }}
                 >
                     Cargar más historias
                 </button>

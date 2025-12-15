@@ -1,56 +1,34 @@
-// src/components/BottomBar.jsx - CÓDIGO FINAL CON CHAT DE VOZ
-
 import { Link, useLocation } from "react-router-dom";
-import { FaUserSecret } from "react-icons/fa";
-import {
-  FaHome,
-  FaMicrophone,
-  FaPencilAlt,
-  FaClipboardList,
-} from "react-icons/fa";
-import { useMemo } from "react";
+import { FaHome, FaCompass, FaPlusCircle, FaMicrophone } from "react-icons/fa";
 
 export default function BottomBar() {
   const location = useLocation();
 
-  // Define los ítems de navegación
   const navItems = [
-    { path: "/", icon: FaHome, label: "Inicio" },
-    { path: "/stories", icon: FaClipboardList, label: "Archivo" },
-    { path: "/voice-chat", icon: FaMicrophone, label: "Voz" },
-    { path: "/submit", icon: FaPencilAlt, label: "Enviar" },
+    { path: "/", icon: FaHome },
+    { path: "/stories", icon: FaCompass }, // Explorar
+    { path: "/submit", icon: FaPlusCircle, isMain: true }, // Botón central
+    { path: "/voice-chat", icon: FaMicrophone },
   ];
 
-  const ANONYMOUS_USER = useMemo(() => {
-    let storedId = localStorage.getItem("anon_admin_uid");
-
-    if (!storedId) {
-      const newId = `Anon-SESS-${Math.floor(Math.random() * 10000)}`;
-      localStorage.setItem("anon_admin_uid", newId);
-      storedId = newId;
-    }
-
-    return storedId;
-  }, []);
-
   return (
-    <div className="bottom-nav">
-      {navItems.map((item) => {
+    <>
+      {navItems.map((item, index) => {
         const isActive = location.pathname === item.path;
         return (
           <Link
-            key={item.path}
+            key={index}
             to={item.path}
-            className={`nav-item ${isActive ? "active" : ""}`}
+            style={{
+              color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '50px', height: '50px'
+            }}
           >
-            <item.icon />
-            <span className="nav-label">{item.label}</span>
+            <item.icon size={item.isMain ? 32 : 24} />
           </Link>
         );
       })}
-      <p className="UserShow">
-        <FaUserSecret /> {ANONYMOUS_USER}
-      </p>
-    </div>
+    </>
   );
 }

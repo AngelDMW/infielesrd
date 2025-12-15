@@ -1,131 +1,148 @@
-// src/pages/Submit.jsx - AÑADIDA SELECCIÓN DE CATEGORÍA
 import { useState } from "react";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { useTheme } from "../context/ThemeContext";
-import { FaPaperPlane } from 'react-icons/fa';
+import { FaPaperPlane, FaPenNib, FaInfoCircle } from 'react-icons/fa';
+import { useNavigate } from "react-router-dom";
 
-// Definición de las categorías que el usuario puede elegir (Deben coincidir con Admin.jsx)
-const USER_CATEGORIES = [
-  { value: 'infidelity', label: 'Infidelidad' },
-  { value: 'confession', label: 'Confesiones' },
-  { value: 'dating', label: 'Citas / Encuentros' },
-  { value: 'other', label: 'Otros Temas' },
+const CATEGORIES = [
+  { value: 'infidelity', label: '💔 Infidelidad' },
+  { value: 'confession', label: '🤫 Confesión Secreta' },
+  { value: 'dating', label: '🔥 Citas / Dating' },
+  { value: 'uncategorized', label: '📢 Bochinche General' },
 ];
 
-
 export default function Submit() {
-  const { dark } = useTheme();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [suggestedCategory, setSuggestedCategory] = useState("other"); // Nuevo estado
+  const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (title.length < 5 || content.length < 50) {
-      setError("El título debe tener al menos 5 caracteres y la historia al menos 50.");
-      return;
-    }
+    if (!title || !content || !category) return;
 
     setLoading(true);
-    setError("");
-    setSuccess(false);
-
     try {
       await addDoc(collection(db, "stories"), {
-        title: title,
-        content: content,
-        status: "pending", 
-        createdAt: new Date().getTime(),
-        // CRÍTICO: El usuario sugiere una categoría
-        category: "pending", 
-        suggestedCategory: suggestedCategory, 
-        // Campos iniciales:
-        views: 0,
-        likes: 0
+        title: title.trim(),
+        content: content.trim(),
+        category,
+        status: "pending", // Requiere aprobación
+        createdAt: serverTimestamp(),
+        likes: 0,
+        commentsCount: 0,
+        views: 0
       });
       
-      setTitle("");
-      setContent("");
-      setSuggestedCategory("other");
-      setSuccess(true);
+      // Redirigir o mostrar éxito
+      alert("¡Tu historia fue enviada al anonimato! Pendiente de aprobación.");
+      navigate('/');
       
     } catch (err) {
-      console.error("Error al enviar la historia:", err);
-      setError("Ocurrió un error al intentar enviar tu historia. Intenta de nuevo.");
+      console.error("Error:", err);
+      alert("Hubo un error al enviar.");
     } finally {
       setLoading(false);
     }
   };
-  
-  // Si la historia fue enviada, mostramos un mensaje de éxito.
-  if (success) {
-    return (
-      <div className="page-content">
-        <div className="feedback-success">
-          <FaPaperPlane size={24} style={{ marginBottom: '10px' }} />
-          <h3>¡Historia Enviada!</h3>
-          <p>Tu chisme ha sido recibido. Pasará por un proceso de moderación y se publicará pronto.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="page-content">
-      <h1 className="section-title"><FaPaperPlane /> Envía Tu Historia Anónima</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-        Toda historia es revisada antes de ser publicada. Sé honesto y detallado.
-      </p>
-
-      {error && (
-        <div className="feedback-error">
-          {error}
+    <div className="fade-in" style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+      
+      {/* Header */}
+      <div style={{ textAlign: 'center', marginBottom: '30px', paddingTop: '20px' }}>
+        <div style={{ 
+            width: 60, height: 60, background: 'var(--surface)', 
+            borderRadius: '50%', margin: '0 auto 15px', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: 'var(--shadow-md)', color: 'var(--primary)'
+        }}>
+            <FaPenNib size={24} />
         </div>
-      )}
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: '0 0 10px 0' }}>Confiesa tu Secreto</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+          Tu identidad está 100% protegida. <br/> Desahógate sin miedo.
+        </p>
+      </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <input
-          type="text"
-          placeholder="Título corto (máx. 80 caracteres)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={80}
-          required
-          disabled={loading}
-        />
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
-        {/* NUEVO CAMPO DE SELECCIÓN DE CATEGORÍA */}
-        <select
-          value={suggestedCategory}
-          onChange={(e) => setSuggestedCategory(e.target.value)}
-          disabled={loading}
-          style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-main)' }}
-        >
-          <option value="" disabled>Selecciona una categoría</option>
-          {USER_CATEGORIES.map(cat => (
-            <option key={cat.value} value={cat.value}>{cat.label}</option>
-          ))}
-        </select>
-        
-        <textarea
-          placeholder="Escribe aquí tu historia (sé detallado/a)..."
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={10}
-          required
-          disabled={loading}
-        />
+        {/* Título */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontWeight: 700, fontSize: '0.9rem', marginLeft: '5px' }}>Título Atractivo</label>
+            <input
+              type="text"
+              placeholder="Ej: Mi novio no sabe que salí con su hermano..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={80}
+              style={{
+                padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)',
+                background: 'var(--surface)', fontSize: '1rem', outline: 'none',
+                boxShadow: 'var(--shadow-sm)'
+              }}
+            />
+        </div>
+
+        {/* Categoría */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontWeight: 700, fontSize: '0.9rem', marginLeft: '5px' }}>Categoría</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {CATEGORIES.map(cat => (
+                    <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => setCategory(cat.value)}
+                        style={{
+                            padding: '12px', borderRadius: '10px',
+                            border: category === cat.value ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                            background: category === cat.value ? 'rgba(217, 4, 41, 0.05)' : 'var(--surface)',
+                            color: category === cat.value ? 'var(--primary)' : 'var(--text-main)',
+                            fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', transition: '0.2s'
+                        }}
+                    >
+                        {cat.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        {/* Historia */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontWeight: 700, fontSize: '0.9rem', marginLeft: '5px' }}>Tu Historia</label>
+            <textarea
+              placeholder="Cuenta todos los detalles..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={8}
+              style={{
+                padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)',
+                background: 'var(--surface)', fontSize: '1rem', outline: 'none',
+                boxShadow: 'var(--shadow-sm)', resize: 'none', lineHeight: '1.5'
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '5px' }}>
+                <FaInfoCircle /> Sé detallado, las historias cortas suelen ser ignoradas.
+            </div>
+        </div>
+
+        {/* Botón Enviar */}
         <button
           type="submit"
-          disabled={loading || title.length < 5 || content.length < 50}
-          className="btn-primary" 
+          disabled={loading || !title || !content || !category}
+          className="active-press"
+          style={{
+            marginTop: '10px', padding: '18px', borderRadius: '50px', border: 'none',
+            background: 'var(--primary)', color: 'white', fontSize: '1.1rem', fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+            opacity: (loading || !title || !content || !category) ? 0.6 : 1,
+            boxShadow: '0 10px 20px rgba(217, 4, 41, 0.3)'
+          }}
         >
-          {loading ? 'Enviando...' : <><FaPaperPlane /> Enviar para Moderación</>}
+          {loading ? 'Enviando...' : <><FaPaperPlane /> Publicar Anónimamente</>}
         </button>
+
       </form>
     </div>
   );

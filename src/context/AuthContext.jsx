@@ -1,5 +1,4 @@
-// src/context/AuthContext.jsx - NUEVO ARCHIVO
-
+// src/context/AuthContext.jsx - OPTIMIZADO
 import { createContext, useContext, useState, useEffect } from "react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -11,19 +10,14 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Escucha los cambios de estado de autenticación (login/logout)
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
     });
-    // Se limpia el listener al desmontar el componente
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
-  // Función de cierre de sesión
-  const logout = () => {
-    return signOut(auth);
-  };
+  const logout = () => signOut(auth);
 
   const value = {
     currentUser,
@@ -31,9 +25,9 @@ export function AuthProvider({ children }) {
     loading,
   };
 
-  // Renderiza los hijos solo si el estado de autenticación se ha cargado
   return (
     <AuthContext.Provider value={value}>
+      {/* Evitamos renderizar la app hasta saber si hay usuario o no */}
       {!loading && children} 
     </AuthContext.Provider>
   );

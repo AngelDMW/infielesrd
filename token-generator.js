@@ -2,19 +2,26 @@
 
 // 1. Usar el método de importación sugerido por Node.js:
 import pkg from 'agora-token'; 
-const { RtcTokenBuilder, RtcRole } = pkg; // 2. Desestructurar las clases del paquete
+const { RtcTokenBuilder, RtcRole } = pkg; 
 
-// --- TUS CREDENCIALES EXACTAS ---
-const appId = 'c8d1e982bbe14be08f5f2b49b0f3c0f4';
-const appCertificate = 'eb3bef2eecf847e4978014882cd54c90'; // Tu Primary Certificate
+// --- CONFIGURACIÓN ---
+// ⚠️ IMPORTANTE: Nunca subas tus claves reales al repositorio (Git).
+// Usa variables de entorno o un archivo .env si ejecutas esto en un servidor.
+// Para pruebas locales, reemplaza los strings vacíos temporalmente, pero NO GUARDES el archivo.
 
-// --- PARÁMETROS DE TOKEN ---
+const appId = process.env.AGORA_APP_ID || ''; // Coloca tu App ID aquí solo para ejecución local temporal
+const appCertificate = process.env.AGORA_APP_CERTIFICATE || ''; // Coloca tu Certificado aquí
 const channelName = 'TEST_VOICE_CHANNEL_DEV';
-const uid = 0; // UID numérico
-const role = RtcRole.PUBLISHER; // Rol de Publicador
+const uid = 0; // UID numérico (0 permite que Agora asigne uno)
+const role = RtcRole.PUBLISHER; 
 
 // --- GENERACIÓN DEL TOKEN ---
 function generateToken() {
+    if (!appId || !appCertificate) {
+        console.error("❌ ERROR: Faltan App ID o App Certificate.");
+        return;
+    }
+
     // Tiempo de vida del token (1 hora)
     const expirationTimeInSeconds = 3600;
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -35,7 +42,9 @@ function generateToken() {
 // --- EJECUCIÓN DEL SCRIPT ---
 const tokenGenerado = generateToken();
 
-console.log("==================================================================");
-console.log("  ✅ ¡TOKEN GENERADO CON ROL PUBLISHER (Solución Node.js)! ");
-console.log("==================================================================");
-console.log(tokenGenerado);
+if (tokenGenerado) {
+    console.log("==================================================================");
+    console.log("  ✅ ¡TOKEN GENERADO CON ROL PUBLISHER! ");
+    console.log("==================================================================");
+    console.log(tokenGenerado);
+}

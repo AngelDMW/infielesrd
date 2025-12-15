@@ -1,19 +1,18 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-// 1. IMPORTAR AUTENTICACIÓN
 import { getAuth } from "firebase/auth";
 
+// Usamos variables de entorno de Vite para seguridad
 const firebaseConfig = {
-  apiKey: "AIzaSyDFOn2SWRyHlcu2SHOPo4GoTuTgekPsbc0",
-  authDomain: "infielesdr.firebaseapp.com",
-  projectId: "infielesdr",
-  storageBucket: "infielesdr.firebasestorage.app",
-  messagingSenderId: "157592371304",
-  appId: "1:157592371304:web:d242187ee9a4a378ef7bdd",
-  measurementId: "G-LRDF10B8BH"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-// 2. EXPORTAR EL OBJETO DE AUTENTICACIÓN
 export const auth = getAuth(app);

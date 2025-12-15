@@ -1,183 +1,69 @@
-/* src/styles/global.css - UNIFICACIÓN Y DEFINICIÓN COMPLETA DEL TEMA */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap");
 
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap");
-
-/* --- VARIABLES BASE (USADAS EN AMBOS TEMAS) --- */
 :root {
-  --font-family: "Outfit", sans-serif;
-
-  /* Colores Bandera/Branding */
-  --primary: #ce1126; /* Rojo Bandera Intenso */
-  --primary-gradient: linear-gradient(135deg, #ff3333 0%, #ce1126 100%);
-  --accent-blue: #002d62; /* Azul Bandera */
-
-  /* Transiciones */
-  --transition-fast: 0.2s ease-in-out;
-}
-
-/* --- MODO CLARO (Tropical Clean) --- */
-:root {
-  --bg: #f4f6f8;
+  /* --- PALETA DE COLORES (Deep & Vivid) --- */
+  --primary: #d90429; /* Rojo Intenso */
+  --primary-dark: #a1001d;
+  --accent: #002d62;  /* Azul Profundo */
+  
+  /* --- SUPERFICIES --- */
+  --bg-body: #f2f4f7; /* Gris azulado muy suave */
   --surface: #ffffff;
-  --text-main: #1a1c1e;
+  --surface-alt: #f8f9fa;
+  
+  /* --- TEXTO --- */
+  --text-main: #1a1a1a;
   --text-secondary: #64748b;
-  --border: #e2e8f0;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --nav-bg: #ffffff;
-  --nav-link: #64748b;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  --glass: rgba(255, 255, 255, 0.9);
-  --error-color: #d32f2f;
+  --text-muted: #94a3b8;
+
+  /* --- BORDES & SOMBRAS --- */
+  --border-subtle: #e2e8f0;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+  --shadow-glow: 0 0 20px rgba(217, 4, 41, 0.15); /* Glow rojo sutil */
+  
+  /* --- MEDIDAS --- */
+  --sidebar-width: 260px;
+  --header-height: 64px;
+  --bottom-nav-height: 70px;
+  --max-feed-width: 600px;
+  --radius-lg: 20px;
+  --radius-md: 12px;
 }
 
-/* --- MODO OSCURO (Noche en el Malecón) --- */
 body.dark-theme {
-  --bg: #050a14; /* Azul casi negro */
-  --surface: #0e1628; /* Superficie más oscura */
-  --text-main: #e2e8f0; /* Texto claro */
-  --text-secondary: #94a3b8; /* Texto secundario gris azulado */
-  --border: #1e293b;
-  --card-bg: #1a253f;
-  --card-border: #1e293b;
-  --nav-bg: rgba(14, 22, 40, 0.9);
-  --nav-link: #94a3b8;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  --glass: rgba(14, 22, 40, 0.9);
+  --bg-body: #0a0a0a; /* Casi negro absoluto */
+  --surface: #141414;
+  --surface-alt: #1a1a1a;
+  --text-main: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-subtle: #27272a;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-/* --- BASE & TIPOGRAFÍA --- */
-* {
-  box-sizing: border-box;
-}
+/* --- BASE --- */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 body {
   margin: 0;
-  padding: 0;
-  font-family: var(--font-family);
-  background-color: var(--bg);
+  font-family: "Outfit", sans-serif;
+  background-color: var(--bg-body);
   color: var(--text-main);
-  transition: background-color 0.3s, color 0.3s;
+  /* Textura de ruido sutil para dar calidad */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+  overflow-y: scroll;
 }
 
-#root {
-  margin: 0 auto;
-  min-height: 100vh;
+/* --- UTILIDADES --- */
+.active-press:active { transform: scale(0.97); transition: transform 0.1s; }
+.fade-in { animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* Gradientes de texto */
+.text-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, #ff4d6d 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-/* --- COMPONENTES GENERALES --- */
-
-.page-content {
-  padding: 20px;
-  padding-bottom: 80px; /* Extra espacio */
-}
-
-.section-title {
-  font-size: 1.5rem;
-  font-weight: 800;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Estilo para las tarjetas/contenedores */
-.card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: var(--shadow);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-/* Botones Principales */
-.btn-primary {
-  padding: 12px 20px;
-  border: none;
-  border-radius: 8px;
-  background: var(--primary);
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-blue);
-}
-
-.btn-primary:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-/* Mensajes de feedback */
-.feedback-success {
-  background: rgba(46, 204, 113, 0.1);
-  color: #2ecc71;
-  border: 1px solid #2ecc71;
-  padding: 15px;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 600;
-  margin: 20px 0;
-}
-
-.feedback-error {
-  background: rgba(231, 76, 60, 0.1);
-  color: var(--error-color);
-  border: 1px solid var(--error-color);
-  padding: 15px;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 600;
-  margin: 20px 0;
-}
-
-/* --- Estilos del Loader --- */
-.loader-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 50px;
-}
-.spinner {
-  border: 4px solid var(--card-border);
-  border-top: 4px solid var(--primary);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 10px;
-}
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-/* --- Estilos de Input (Unificación) --- */
-input[type="text"],
-input[type="email"],
-input[type="password"],
-textarea {
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-main);
-  width: 100%;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-input:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
-}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

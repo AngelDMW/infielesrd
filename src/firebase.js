@@ -2,7 +2,10 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// IMPORTANTE: En Vite usamos import.meta.env, NO process.env
+// --- DEBUGGING (Borrar esto luego) ---
+console.log("Intentando leer API KEY:", import.meta.env.VITE_API_KEY);
+// ------------------------------------
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_API_KEY,
   authDomain: import.meta.env.VITE_AUTH_DOMAIN,
@@ -12,7 +15,11 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_APP_ID
 };
 
-// Inicializar Firebase
+// Validación extra antes de iniciar
+if (!firebaseConfig.apiKey) {
+  console.error("CRITICAL ERROR: API KEY IS MISSING IN FIREBASE CONFIG");
+}
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);

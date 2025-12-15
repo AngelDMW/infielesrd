@@ -20,7 +20,6 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useState, useEffect, useCallback } from "react";
-
 import { formatTimeAgo } from "../utils/timeFormat";
 
 // Tarjeta Feed
@@ -29,9 +28,9 @@ const FeedCard = ({ story }) => (
     to={`/story/${story.id}`}
     style={{ textDecoration: "none", color: "inherit" }}
   >
-           {" "}
+    {" "}
     <div className="card fade-in" style={{ marginBottom: "15px" }}>
-                 {" "}
+      {" "}
       <div
         style={{
           display: "flex",
@@ -40,8 +39,7 @@ const FeedCard = ({ story }) => (
           alignItems: "center",
         }}
       >
-                        <span className="badge">📢 Bochinche</span>             
-         {" "}
+        <span className="badge">📢 Bochinche</span>{" "}
         <span
           style={{
             fontSize: "0.75rem",
@@ -50,16 +48,13 @@ const FeedCard = ({ story }) => (
           }}
         >
           {formatTimeAgo(story.publishedAt)}
-        </span>
-                   {" "}
-      </div>
-                 {" "}
+        </span>{" "}
+      </div>{" "}
       <h3
         style={{ fontSize: "1.15rem", marginBottom: "8px", lineHeight: "1.3" }}
       >
         {story.title}
-      </h3>
-                 {" "}
+      </h3>{" "}
       <p
         style={{
           fontSize: "0.9rem",
@@ -71,9 +66,8 @@ const FeedCard = ({ story }) => (
           overflow: "hidden",
         }}
       >
-                        {story.content}           {" "}
-      </p>
-                 {" "}
+        {story.content}{" "}
+      </p>{" "}
       <div
         style={{
           borderTop: "1px dashed var(--border)",
@@ -85,19 +79,15 @@ const FeedCard = ({ story }) => (
           fontWeight: "600",
         }}
       >
-                       {" "}
+        {" "}
         <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
           <FaHeart style={{ color: "var(--primary)" }} /> {story.likes || 0}
-        </span>
-                       {" "}
+        </span>{" "}
         <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
           <FaCommentAlt /> {story.commentsCount || 0}
-        </span>
-                   {" "}
-      </div>
-             {" "}
-    </div>
-       {" "}
+        </span>{" "}
+      </div>{" "}
+    </div>{" "}
   </Link>
 );
 
@@ -151,20 +141,19 @@ export default function Home() {
         color: "var(--text-secondary)",
       }}
     >
-                 {" "}
+      {" "}
       <FaSpinner
         className="spin-icon"
         size={20}
         style={{ marginBottom: "5px" }}
       />
-                  <p style={{ margin: 0 }}>{text}</p>       {" "}
+      <p style={{ margin: 0 }}>{text}</p>{" "}
     </div>
   );
 
   return (
     <div className="app-container" style={{ paddingBottom: "100px" }}>
-                              {/* 1. HEADER DOMINICANO (Se mantiene) */}       
-         {" "}
+      {/* 1. HEADER DOMINICANO (Se mantiene) */}{" "}
       <div
         style={{
           padding: "20px 25px 10px 25px",
@@ -173,9 +162,9 @@ export default function Home() {
           alignItems: "center",
         }}
       >
-                       {" "}
+        {" "}
         <div>
-                             {" "}
+          {" "}
           <p
             style={{
               fontSize: "0.85rem",
@@ -187,14 +176,11 @@ export default function Home() {
             }}
           >
             Klk, bienvenido a
-          </p>
-                             {" "}
+          </p>{" "}
           <h1 style={{ fontSize: "2rem", lineHeight: "1" }}>
             Infiels<span className="text-gradient">RD</span> 🇩🇴
-          </h1>
-                         {" "}
-        </div>
-                       {" "}
+          </h1>{" "}
+        </div>{" "}
         <button
           onClick={toggleDark}
           style={{
@@ -211,14 +197,13 @@ export default function Home() {
             boxShadow: "var(--shadow)",
           }}
         >
-                             {" "}
-          {dark ? <FaSun size={20} /> : <FaMoon size={20} />}               {" "}
-        </button>
-                   {" "}
+          {" "}
+          {dark ? <FaSun size={20} /> : <FaMoon size={20} />}{" "}
+        </button>{" "}
       </div>
-                  {/* 2. HERO: SUELTA LA SOPA (Se mantiene) */}           {" "}
+      {/* 2. HERO: SUELTA LA SOPA (Se mantiene) */}{" "}
       <div style={{ padding: "20px 25px" }}>
-                       {" "}
+        {" "}
         <div
           style={{
             background: dark
@@ -232,9 +217,9 @@ export default function Home() {
             boxShadow: "0 15px 35px rgba(206, 17, 38, 0.3)",
           }}
         >
-                             {" "}
+          {" "}
           <div style={{ position: "relative", zIndex: 1 }}>
-                                   {" "}
+            {" "}
             <div
               style={{
                 background: "rgba(255,255,255,0.2)",
@@ -247,10 +232,8 @@ export default function Home() {
                 backdropFilter: "blur(5px)",
               }}
             >
-                                          🤫 100% Anónimo                      
-               {" "}
-            </div>
-                                   {" "}
+              🤫 100% Anónimo{" "}
+            </div>{" "}
             <h2
               style={{
                 fontSize: "1.8rem",
@@ -261,8 +244,7 @@ export default function Home() {
               ¿Cuál es el
               <br />
               bochinche de hoy?
-            </h2>
-                                   {" "}
+            </h2>{" "}
             <p
               style={{
                 opacity: 0.9,
@@ -271,21 +253,16 @@ export default function Home() {
               }}
             >
               Desahógate sin miedo. Aquí nadie sabe quién eres.
-            </p>
-                                   {" "}
+            </p>{" "}
             <Link
               to="/submit"
               className="btn-primary"
               style={{ boxShadow: "0 5px 15px rgba(0,0,0,0.1)" }}
             >
-                                          <FaBullhorn /> Suelta la sopa        
-                             {" "}
-            </Link>
-                               {" "}
-          </div>
-                             {" "}
-          {/* Elementos decorativos abstractos (Se mantienen) */}               
-             {" "}
+              <FaBullhorn /> Suelta la sopa{" "}
+            </Link>{" "}
+          </div>{" "}
+          {/* Elementos decorativos abstractos (Se mantienen) */}{" "}
           <div
             style={{
               position: "absolute",
@@ -296,8 +273,7 @@ export default function Home() {
               borderRadius: "50%",
               background: "rgba(255,255,255,0.1)",
             }}
-          ></div>
-                             {" "}
+          ></div>{" "}
           <div
             style={{
               position: "absolute",
@@ -308,14 +284,12 @@ export default function Home() {
               borderRadius: "50%",
               background: "rgba(255,255,255,0.1)",
             }}
-          ></div>
-                         {" "}
-        </div>
-                   {" "}
+          ></div>{" "}
+        </div>{" "}
       </div>
-                  {/* 3. EL CALENTÓN (Scroll Horizontal) */}           {" "}
+      {/* 3. EL CALENTÓN (Scroll Horizontal) */}{" "}
       <div style={{ marginBottom: "35px" }}>
-                       {" "}
+        {" "}
         <div
           style={{
             display: "flex",
@@ -325,7 +299,7 @@ export default function Home() {
             alignItems: "center",
           }}
         >
-                             {" "}
+          {" "}
           <h2
             style={{
               fontSize: "1.3rem",
@@ -344,10 +318,8 @@ export default function Home() {
             >
               (Top)
             </span>
-          </h2>
-                         {" "}
-        </div>
-                                       {" "}
+          </h2>{" "}
+        </div>{" "}
         <div
           style={{
             display: "flex",
@@ -360,7 +332,7 @@ export default function Home() {
             msOverflowStyle: "none",
           }}
         >
-                             {" "}
+          {" "}
           {loading ? (
             <LoadingIndicator text="Cargando el lío..." />
           ) : popularStories.length > 0 ? (
@@ -374,7 +346,7 @@ export default function Home() {
                   flex: "0 0 260px",
                 }}
               >
-                                           {" "}
+                {" "}
                 <div
                   style={{
                     background: "var(--surface)",
@@ -388,7 +360,7 @@ export default function Home() {
                     boxShadow: "var(--shadow)",
                   }}
                 >
-                                                 {" "}
+                  {" "}
                   <h4
                     style={{
                       margin: "0 0 12px 0",
@@ -398,8 +370,7 @@ export default function Home() {
                     }}
                   >
                     {story.title}
-                  </h4>
-                                                 {" "}
+                  </h4>{" "}
                   <div
                     style={{
                       display: "flex",
@@ -409,15 +380,12 @@ export default function Home() {
                       fontWeight: "600",
                     }}
                   >
-                                                       {" "}
+                    {" "}
                     <span style={{ color: "var(--primary)" }}>
                       🔥 {story.likes} Fuego
-                    </span>
-                                                   {" "}
-                  </div>
-                                             {" "}
-                </div>
-                                       {" "}
+                    </span>{" "}
+                  </div>{" "}
+                </div>{" "}
               </Link>
             ))
           ) : (
@@ -428,14 +396,12 @@ export default function Home() {
                 Aún no hay historias con mucho 🔥. ¡Sé el primero en comentar!
               </p>
             )
-          )}
-                         {" "}
-        </div>
-                   {" "}
+          )}{" "}
+        </div>{" "}
       </div>
-                  {/* 4. FEED: ACABADITO DE SALIR */}           {" "}
+      {/* 4. FEED: ACABADITO DE SALIR */}{" "}
       <div style={{ padding: "0 25px" }}>
-                       {" "}
+        {" "}
         <div
           style={{
             display: "flex",
@@ -444,7 +410,7 @@ export default function Home() {
             alignItems: "center",
           }}
         >
-                             {" "}
+          {" "}
           <h2
             style={{
               fontSize: "1.3rem",
@@ -454,8 +420,7 @@ export default function Home() {
             }}
           >
             👀 Acabadito de salir
-          </h2>
-                             {" "}
+          </h2>{" "}
           <Link
             to="/stories"
             style={{
@@ -466,12 +431,10 @@ export default function Home() {
             }}
           >
             Ver to'
-          </Link>
-                         {" "}
-        </div>
-                       {" "}
+          </Link>{" "}
+        </div>{" "}
         <div style={{ display: "flex", flexDirection: "column" }}>
-                             {" "}
+          {" "}
           {loading ? (
             <LoadingIndicator text="Buscando chismes..." />
           ) : recentStories.length > 0 ? (
@@ -491,12 +454,9 @@ export default function Home() {
                 una!
               </p>
             )
-          )}
-                         {" "}
-        </div>
-                   {" "}
-      </div>
-             {" "}
+          )}{" "}
+        </div>{" "}
+      </div>{" "}
     </div>
   );
 }

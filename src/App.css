@@ -2,67 +2,109 @@
 
 /* --- 1. BottomBar (Móvil) --- */
 .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 60px; /* Altura fija */
-    max-width: 480px;
-    margin: 0 auto;
-    
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px; /* Altura fija */
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
 
-    /* Estilos Glassmorphism del tema global */
-    background: var(--glass);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid var(--border);
-    
-    z-index: 1000;
-    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.15); /* Sombra hacia arriba */
+  /* Estilos Glassmorphism del tema global */
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+
+  z-index: 1000;
+  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.15);
 }
 
-.nav-item {
+.UserShow {
+  /* color: rgb(44, 52, 90); */
+  font-size: 1.2vw;
+  position: absolute;
+  bottom: 10px;
+}
+
+/* * --------------------------------
+ * Media Query para Desktop (Tablet en adelante) 
+ * --------------------------------
+ */
+@media (min-width: 768px) {
+  .bottom-nav {
+    top: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-decoration: none;
-    color: var(--nav-link); /* Color inactivo */
-    font-size: 0.7rem;
-    font-weight: 600;
-    gap: 4px;
-    padding: 5px 0;
-    width: 25%; 
-    transition: color var(--transition-fast), transform 0.2s ease;
+    width: 360px;
+    height: auto;
+    padding: 20px;
+    justify-content: left;
+  }
+
+  .bottom-nav .nav-item {
+    width: 100%;
+    display: flex;
+    padding: 20px;
+    font-size: 1.2vw;
+    flex-direction: row;
+    gap: 1vh;
+  }
+
+  .app-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .content {
+    flex: 1;
+    margin-left: 360px;
+    padding: 20px;
+    padding-inline: 300px;
+  }
+}
+
+/* Estilos de elementos de navegación (No necesitan cambios) */
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--nav-link);
+  font-size: 0.7rem;
+  font-weight: 600;
+  gap: 4px;
+  padding: 5px 0;
+  width: 25%;
+  transition: color var(--transition-fast), transform 0.2s ease;
 }
 
 .nav-item:hover {
-    color: var(--text-main);
+  color: var(--text-main);
 }
 
 .nav-item.active {
-    color: var(--primary); /* Color activo: Rojo Bandera */
-    transform: scale(1.05);
+  color: var(--primary);
+  transform: scale(1.05);
 }
 
 .nav-label {
-    margin-top: 2px;
+  margin-top: 2px;
 }
 
-/* 2. VOZ: Animación de Micrófono (para simular el habla) */
+/* 2. VOZ: Animación de Micrófono (para simular el habla) - No necesita cambios */
 .speaking-pulse {
-    animation: pulse-ring 1.5s cubic-bezier(0.66, 0, 0, 1) infinite;
-    border-radius: 50%;
+  animation: pulse-ring 1.5s cubic-bezier(0.66, 0, 0, 1) infinite;
+  border-radius: 50%;
 }
 
 @keyframes pulse-ring {
-    0% {
-        box-shadow: 0 0 0 0 var(--primary);
-    }
-    100% {
-        box-shadow: 0 0 0 15px rgba(206, 17, 38, 0); /* Usar el color primario transparente */
-    }
+  0% {
+    box-shadow: 0 0 0 0 var(--primary);
+  }
+  100% {
+    box-shadow: 0 0 0 15px rgba(206, 17, 38, 0);
+  }
 }

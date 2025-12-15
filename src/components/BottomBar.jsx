@@ -7,7 +7,7 @@ export default function BottomBar() {
   const navItems = [
     { path: "/", icon: FaHome },
     { path: "/stories", icon: FaCompass }, // Explorar
-    { path: "/submit", icon: FaPlusCircle, isMain: true }, // Botón central
+    { path: "/submit", icon: FaPlusCircle }, // Botón central
     { path: "/voice-chat", icon: FaMicrophone },
   ];
 
@@ -20,12 +20,15 @@ export default function BottomBar() {
             key={index}
             to={item.path}
             style={{
-              color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '50px', height: '50px'
+              color: isActive ? "var(--primary)" : "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "50px",
+              height: "50px",
             }}
           >
-            <item.icon size={item.isMain ? 32 : 24} />
+            <item.icon size={24} />
           </Link>
         );
       })}

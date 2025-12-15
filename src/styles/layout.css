@@ -11,34 +11,49 @@
 .main-content {
   width: 100%;
   padding-bottom: 90px;
-  padding-top: 70px;
+  padding: 50px;
+  padding-top: 100px;
   max-width: 100%;
 }
 
-.desktop-sidebar { display: none; }
+.desktop-sidebar {
+  display: none;
+}
 
 /* Header y BottomBar Móvil */
 .mobile-header {
-  position: fixed; top: 0; left: 0; right: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   height: var(--header-height);
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
   z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0 20px;
 }
-body.dark-theme .mobile-header { background: rgba(20, 20, 20, 0.9); }
+body.dark-theme .mobile-header {
+  background: rgba(20, 20, 20, 0.9);
+}
 
 .mobile-bottom-bar {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: var(--bottom-nav-height);
   background: var(--surface);
   border-top: 1px solid var(--border-subtle);
-  display: flex; justify-content: space-around; align-items: center;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -5px 20px rgba(0,0,0,0.03);
+  box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.03);
 }
 
 /* --- DESKTOP (PC > 1024px) --- */
@@ -46,21 +61,27 @@ body.dark-theme .mobile-header { background: rgba(20, 20, 20, 0.9); }
   .layout-container {
     flex-direction: row;
     /* CAMBIO CLAVE: Alineación a la izquierda y ancho completo */
-    justify-content: flex-start; 
+    justify-content: flex-start;
     align-items: flex-start;
     max-width: 100%; /* Ocupar toda la pantalla */
     width: 100%;
     margin: 0; /* Eliminar márgenes automáticos */
   }
 
-  .mobile-header, .mobile-bottom-bar { display: none; }
+  .mobile-header {
+    display: none;
+  }
+
+  .mobile-bottom-bar {
+    display: none;
+  }
 
   /* SIDEBAR IZQUIERDA */
   .desktop-sidebar {
     display: flex;
     flex-direction: column;
     /* Ajuste de ancho para que se vea bien */
-    width: 280px; 
+    width: 280px;
     height: 100vh;
     position: sticky;
     top: 0;
@@ -74,12 +95,10 @@ body.dark-theme .mobile-header { background: rgba(20, 20, 20, 0.9); }
   /* FEED PRINCIPAL */
   .main-content {
     flex: 1;
-    /* Ajustamos el ancho del feed para que no se estire demasiado */
-    max-width: 700px; 
-    padding-top: 30px;
-    padding-bottom: 40px;
-    /* Un poco de margen a la izquierda para separarlo del sidebar */
-    margin-left: 40px; 
-    margin-right: auto; /* El espacio sobrante se va a la derecha */
+    width: 100%;
+    padding-top: 5vh;
+    padding-inline: 12vw;
+    display: flex;
+    justify-content: center;
   }
 }

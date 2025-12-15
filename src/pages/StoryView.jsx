@@ -466,18 +466,17 @@ export default function StoryView() {
       }
 
       setStory({ id: storySnap.id, ...storyData });
-
       // Incrementar las vistas solo una vez por sesión anónima (simulado)
+
       const sessionKey = `viewed_${id}`;
+
       if (!sessionStorage.getItem(sessionKey)) {
-        await updateDoc(storyRef, { views: increment(1) });
         sessionStorage.setItem(sessionKey, "true");
       }
 
       // Comprobar si el usuario actual le dio 'like' (simulado)
       const likedKey = `liked_${id}_${TEMP_USER_ID}`;
       setIsLiked(!!localStorage.getItem(likedKey));
-
       // -------------------------------------------------------------------------
       // B. Lógica de Carga de Comentarios
       // -------------------------------------------------------------------------
@@ -646,17 +645,24 @@ export default function StoryView() {
     );
   }
 
-  // if (error) {
-  //     return (
-  //         <div className="page-content" style={{ textAlign: 'center', paddingTop: '50px' }}>
-  //             <h1 style={{color: 'var(--error-color)'}}>¡Error!</h1>
-  //             <p style={{marginBottom: '20px'}}>{error}</p>
-  //             <Link to="/" className="btn-primary" style={{ padding: '10px 20px', textDecoration: 'none' }}>
-  //                 <FaArrowLeft style={{marginRight: '5px'}}/> Volver al Inicio
-  //             </Link>
-  //         </div>
-  //     );
-  // }
+  if (error) {
+    return (
+      <div
+        className="page-content"
+        style={{ textAlign: "center", paddingTop: "50px" }}
+      >
+        <h1 style={{ color: "var(--error-color)" }}>¡Error!</h1>
+        <p style={{ marginBottom: "20px" }}>{error}</p>
+        <Link
+          to="/"
+          className="btn-primary"
+          style={{ padding: "10px 20px", textDecoration: "none" }}
+        >
+          <FaArrowLeft style={{ marginRight: "5px" }} /> Volver al Inicio
+        </Link>
+      </div>
+    );
+  }
 
   if (!story) {
     return null; // No debería suceder si el error se maneja arriba

@@ -22,14 +22,16 @@ const CATEGORY_LABELS = {
   other: "👀 Varios"
 };
 
+// Generador de colores seguro
 const getColorFromId = (id) => {
-    if (!id) return '#333'; 
+    if (!id) return '#1a1a1a'; 
     const colors = ['#ce1126', '#002d62', '#e67e22', '#16a085', '#8e44ad', '#2980b9', '#c0392b'];
     let hash = 0;
     for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
 };
 
+// --- COMPONENTE COMENTARIO ---
 const CommentItem = ({ comment, onReply, onReport }) => {
     const [likes, setLikes] = useState(comment.likes || 0);
     const [isLiked, setIsLiked] = useState(false);
@@ -49,7 +51,7 @@ const CommentItem = ({ comment, onReply, onReport }) => {
                     minWidth: '36px', width: '36px', height: '36px', borderRadius: '50%', 
                     backgroundColor: avatarBg, 
                     display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                    color: '#fff', fontSize: '14px', marginTop: '2px',
+                    color: '#ffffff', fontSize: '14px', marginTop: '2px',
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}>
                     {isMe ? 'Yo' : <FaUserSecret />}
@@ -67,7 +69,7 @@ const CommentItem = ({ comment, onReply, onReport }) => {
 
                     {comment.replyTo && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                            Respondiendo a: <strong>{comment.replyTo}</strong>
+                            Repondiendo a: <strong>{comment.replyTo}</strong>
                         </div>
                     )}
                     
@@ -92,6 +94,7 @@ const CommentItem = ({ comment, onReply, onReport }) => {
     );
 };
 
+// --- PÁGINA PRINCIPAL ---
 export default function StoryView() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -158,7 +161,7 @@ export default function StoryView() {
 
   const handleReport = () => {
       if(window.confirm("¿Deseas reportar esta historia?")) {
-          alert("Gracias por reportar. Revisaremos el contenido.");
+          alert("Reporte enviado.");
       }
   };
 
@@ -187,39 +190,44 @@ export default function StoryView() {
     finally { setIsSending(false); }
   };
 
+  // ✅ LÓGICA CATEGORÍA PERSONALIZADA
+  const getDisplayCategory = () => {
+      if (!story) return "";
+      if (story.category === 'other' && story.customLabel) {
+          return `✨ ${story.customLabel}`;
+      }
+      return CATEGORY_LABELS[story.category] || "Historia";
+  };
+
   if (loading) return <div style={{paddingTop: 100}}><Loader /></div>;
   if (!story) return null;
 
   return (
     <div className="fade-in" style={{ paddingBottom: '100px', position: 'relative' }}>
       
-      {/* --- BOTÓN DE VOLVER FLOTANTE PERO INTEGRADO --- */}
-      {/* Usamos position: sticky para que se quede arriba mientras scrolleas,
-          pero dentro del flujo del contenedor (no fixed global).
-      */}
+      {/* Botón Volver Flotante */}
       <div style={{ 
-          position: 'sticky', top: 0, zIndex: 50, 
-          padding: '10px 0', 
-          background: 'var(--bg-app)', // El mismo color del fondo de la app para que se mezcle
-          display: 'flex', alignItems: 'center'
+          position: 'sticky', top: 20, zIndex: 50, 
+          display: 'flex', alignItems: 'center',
+          pointerEvents: 'none' 
       }}>
           <button onClick={() => navigate(-1)} className="active-press" style={{ 
+              pointerEvents: 'auto',
+              marginLeft: '20px', 
               background: 'var(--surface)', 
               border: '1px solid var(--border-subtle)', 
-              borderRadius: '50%', width: 40, height: 40, 
-              fontSize: '1.1rem', cursor: 'pointer', color: 'var(--text-main)', 
+              borderRadius: '50%', width: 42, height: 42, 
+              fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-main)', 
               display: 'flex', alignItems: 'center', justifyContent: 'center', 
-              boxShadow: 'var(--shadow-sm)',
-              marginLeft: '20px' // Margen seguro
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
           }}>
             <FaArrowLeft />
           </button>
       </div>
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main style={{ padding: '0 20px' }}>
+      <main style={{ marginTop: '20px', padding: '0 20px' }}>
         
-        {/* Info Autor y Categoría */}
+        {/* Info Autor */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ 
@@ -235,8 +243,15 @@ export default function StoryView() {
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{formatTimeAgo(story.publishedAt)}</span>
                 </div>
             </div>
-            <div style={{ background: 'var(--bg-body)', padding: '6px 12px', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', border: '1px solid var(--border-subtle)' }}>
-                {CATEGORY_LABELS[story.category] || "Historia"}
+            
+            {/* CATEGORÍA (Custom o Normal) */}
+            <div style={{ 
+                background: 'var(--bg-body)', padding: '6px 12px', borderRadius: '20px', 
+                fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', 
+                textTransform: 'uppercase', border: '1px solid var(--border-subtle)',
+                maxWidth: '140px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+            }}>
+                {getDisplayCategory()}
             </div>
         </div>
 
@@ -248,28 +263,19 @@ export default function StoryView() {
           {story.content}
         </div>
 
-        {/* BARRA DE ACCIONES */}
-        <div style={{ 
-            display: 'flex', gap: '10px', padding: '15px', 
-            background: 'var(--surface)', borderRadius: '16px',
-            border: '1px solid var(--border-subtle)', marginBottom: '30px',
-            boxShadow: 'var(--shadow-sm)'
-        }}>
+        <div style={{ display: 'flex', gap: '10px', padding: '15px', background: 'var(--surface)', borderRadius: '16px', border: '1px solid var(--border-subtle)', marginBottom: '30px', boxShadow: 'var(--shadow-sm)' }}>
            <button onClick={handleLike} className="active-press" style={{ flex: 2, background: isLiked ? 'rgba(217,4,41,0.08)' : 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: isLiked ? 'var(--primary)' : 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
                <div style={{ transform: animateLike ? 'scale(1.4)' : 'scale(1)', transition: '0.2s' }}>{isLiked ? <FaHeart size={20} /> : <FaRegHeart size={20} />}</div>
                {story.likes || 0}
            </button>
-
            <button onClick={handleShare} className="active-press" style={{ flex: 2, background: 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-main)', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
                <FaShare size={18} />
            </button>
-
            <button onClick={handleReport} className="active-press" style={{ flex: 1, background: 'var(--bg-body)', border: 'none', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                <FaFlag size={18} />
            </button>
         </div>
 
-        {/* Comentarios */}
         <div>
             <h3 style={{ marginBottom: '20px', fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 Comentarios ({story.commentsCount || 0})
@@ -286,7 +292,7 @@ export default function StoryView() {
                             key={c.id} 
                             comment={c} 
                             onReply={(comment) => setReplyingTo(comment)} 
-                            onReport={() => alert("Comentario reportado.")}
+                            onReport={() => alert("Reporte enviado.")}
                         />
                     ))}
                 </div>

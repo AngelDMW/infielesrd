@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 
-// Usa tu ID de Agora desde .env o ponlo aquí directo para probar "tu-app-id"
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID; 
 
 export default function useAgora(roomId, userId) {
@@ -11,21 +10,14 @@ export default function useAgora(roomId, userId) {
   const client = useRef(null);
 
   useEffect(() => {
-    if (!APP_ID) {
-      console.error("Falta VITE_AGORA_APP_ID en el archivo .env");
-      return;
-    }
+    if (!APP_ID) return;
 
-    // 1. Inicializar Cliente
     client.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
     const init = async () => {
-      // Eventos de Usuarios Remotos
       client.current.on("user-published", async (user, mediaType) => {
         await client.current.subscribe(user, mediaType);
-        if (mediaType === "audio") {
-          user.audioTrack.play();
-        }
+        if (mediaType === "audio") user.audioTrack.play();
         setRemoteUsers(prev => [...prev, user]);
       });
 
@@ -34,37 +26,30 @@ export default function useAgora(roomId, userId) {
       });
 
       try {
-        // 2. Unirse al canal (Sala)
-        // null = token (para testing), roomId = canal, userId = tu ID
         await client.current.join(APP_ID, roomId, null, userId);
-        
-        // 3. Crear y Publicar Audio Local
         const track = await AgoraRTC.createMicrophoneAudioTrack();
         setLocalAudioTrack(track);
         await client.current.publish(track);
-        
         setIsConnected(true);
-      } catch (error) {
-        console.error("Error Agora:", error);
-      }
+      } catch (error) { console.error("Error Agora:", error); }
     };
 
     init();
 
-    // Cleanup al salir
+    // CLEANUP OBLIGATORIO: Libera el micrófono al salir
     return () => {
       if (localAudioTrack) {
         localAudioTrack.stop();
-        localAudioTrack.close();
+        localAudioTrack.close(); // <--- ESTO APAGA LA LUZ DEL MICRO
       }
       if (client.current) {
         client.current.leave();
       }
       setIsConnected(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId]);
 
-  // Función para mutear/desmutear
   const toggleMute = () => {
     if (localAudioTrack) {
       const isMuted = localAudioTrack.muted;

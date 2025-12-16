@@ -8,7 +8,6 @@ import {
   FaRadiation, FaBiohazard, FaPepperHot, FaMapMarkerAlt
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants"; 
-// ✅ IMPORTACIONES DE FIREBASE AGREGADAS
 import { doc, updateDoc, increment } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -22,13 +21,12 @@ const TOXIC_CONFIG = {
 export default function FeedCard({ story }) {
   if (!story) return null;
 
-  // Estados
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(story.likes || 0);
   const [isSaved, setIsSaved] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
 
-  // ✅ EFECTO: VERIFICAR SI YA DI LOKE AL CARGAR
+  // Verificar si ya le di like al cargar
   useEffect(() => {
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
     if (likedStories.includes(story.id)) {
@@ -36,27 +34,27 @@ export default function FeedCard({ story }) {
     }
   }, [story.id]);
 
-  // Datos visuales
   const timeAgo = formatTimeAgo(story.createdAt);
+  
   const catObj = CATEGORIES.find(c => c.value === story.category) || CATEGORIES[3];
   const provObj = PROVINCES.find(p => p.value === story.province);
   const provLabel = provObj ? provObj.label : "";
+
   const toxicLevel = story.toxicity || 1;
   const toxicData = TOXIC_CONFIG[toxicLevel] || TOXIC_CONFIG[1];
-  const displayCategoryLabel = (story.category === "other" && story.customLabel) 
-    ? story.customLabel : catObj.label;
 
-  // ✅ MANEJADOR DE LIKE REAL (CON FIREBASE)
+  const displayCategoryLabel = (story.category === "other" && story.customLabel) 
+    ? story.customLabel 
+    : catObj.label;
+
   const handleLike = async (e) => {
-    e.preventDefault(); // Evita entrar a la historia
+    e.preventDefault(); 
     e.stopPropagation();
 
-    // 1. Optimistic UI (Actualizar visualmente inmediato)
     const newStatus = !isLiked;
     setIsLiked(newStatus);
     setLikeCount((prev) => (newStatus ? prev + 1 : prev - 1));
 
-    // 2. Actualizar LocalStorage (Persistencia local)
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
     if (newStatus) {
       if (!likedStories.includes(story.id)) likedStories.push(story.id);
@@ -66,15 +64,11 @@ export default function FeedCard({ story }) {
     }
     localStorage.setItem('liked_stories', JSON.stringify(likedStories));
 
-    // 3. Actualizar Firebase (Persistencia en nube)
     try {
       const storyRef = doc(db, "stories", story.id);
-      await updateDoc(storyRef, {
-        likes: increment(newStatus ? 1 : -1)
-      });
+      await updateDoc(storyRef, { likes: increment(newStatus ? 1 : -1) });
     } catch (error) {
-      console.error("Error dando like:", error);
-      // Si falla, revertimos visualmente (opcional, pero buena práctica)
+      console.error("Error like:", error);
       setIsLiked(!newStatus);
       setLikeCount((prev) => (newStatus ? prev - 1 : prev + 1));
     }
@@ -190,18 +184,29 @@ export default function FeedCard({ story }) {
 
       {/* FOOTER */}
       <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--border-subtle)", width: "100%", boxSizing: "border-box" }}>
+        
+        {/* Acciones Izquierda */}
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          {/* BOTÓN LIKE REAL */}
+          
+          {/* LIKE */}
           <button onClick={handleLike} className="active-press" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
             {isLiked ? <FaHeart size={26} color="#ed4956" /> : <FaRegHeart size={26} color="var(--text-main)" />}
           </button>
+          
+          {/* ✅ COMENTARIOS (Ahora muestra el número) */}
           <Link to={`/story/${story.id}#comments`} style={{ color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px", textDecoration: "none" }}>
             <FaRegComment size={24} style={{ transform: "scaleX(-1)" }} />
+            {/* Contador de Comentarios */}
+            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{story.commentsCount || 0}</span>
           </Link>
+          
+          {/* COMPARTIR */}
           <button onClick={handleShareLink} className="active-press" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-main)" }}>
             <FaRegPaperPlane size={24} />
           </button>
         </div>
+
+        {/* Acciones Derecha */}
         <div style={{display: 'flex', gap: '15px'}}>
              <button onClick={handleGenerateImage} className="active-press" disabled={generatingImage} style={{ background: "var(--primary)", border: "none", borderRadius: "50%", width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white", boxShadow: "0 4px 10px rgba(217, 4, 41, 0.3)" }}>
                 {generatingImage ? <FaSpinner className="spin-icon" /> : <FaWhatsapp size={20} />}
@@ -211,6 +216,8 @@ export default function FeedCard({ story }) {
              </button>
         </div>
       </div>
+      
+      {/* Texto de Likes (Abajo del todo) */}
       <div style={{ padding: "0 16px 16px 16px" }}>
         <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-main)" }}>{likeCount} Me gusta</span>
       </div>

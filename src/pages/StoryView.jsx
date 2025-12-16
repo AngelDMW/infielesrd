@@ -5,14 +5,27 @@ import {
   onSnapshot,
   updateDoc,
   increment,
-  arrayUnion
+  arrayUnion,
+  addDoc,
+  collection,
+  serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { getAnonymousID } from "../utils/identity";
 import {
-  FaHeart, FaRegHeart, FaArrowLeft, FaPaperPlane, FaFlag, FaShare,
-  FaSpinner, FaUserSecret, FaGavel, FaRadiation, FaBiohazard,
-  FaPepperHot, FaMapMarkerAlt
+  FaHeart,
+  FaRegHeart,
+  FaArrowLeft,
+  FaPaperPlane,
+  FaFlag,
+  FaShare,
+  FaSpinner,
+  FaUserSecret,
+  FaGavel,
+  FaRadiation,
+  FaBiohazard,
+  FaPepperHot,
+  FaMapMarkerAlt
 } from "react-icons/fa";
 import { formatTimeAgo } from "../utils/timeFormat";
 import Loader from "../components/Loader";
@@ -29,22 +42,69 @@ const TOXIC_CONFIG = {
   4: { color: "#ef4444", icon: FaRadiation, label: "Chernobyl" }
 };
 
-const VerdictBar = ({ label, count, total, color, onClick, selected }) => {
-  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+// --- SUB-COMPONENTE: COMENTARIO ---
+const CommentItem = ({ comment, storyId, allComments, onReply, onReport }) => {
+  const [isLiked, setIsLiked] = useState(comment.likes?.includes(CURRENT_USER_ID) || false);
+  const likeCount = comment.likes?.length || 0;
+
+  const handleLike = async () => {
+    setIsLiked(!isLiked);
+    const updatedComments = allComments.map(c => {
+      if (c.id === comment.id) {
+        const currentLikes = c.likes || [];
+        if (currentLikes.includes(CURRENT_USER_ID)) {
+          return { ...c, likes: currentLikes.filter(id => id !== CURRENT_USER_ID) };
+        } else {
+          return { ...c, likes: [...currentLikes, CURRENT_USER_ID] };
+        }
+      }
+      return c;
+    });
+    const storyRef = doc(db, "stories", storyId);
+    await updateDoc(storyRef, { comments: updatedComments });
+  };
+
   return (
-    <div onClick={onClick} className="active-press" style={{ marginBottom: '12px', cursor: 'pointer', opacity: selected ? 1 : 0.8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', fontWeight: 600 }}>
-        <span style={{color: 'var(--text-main)'}}>{label}</span>
-        <span style={{color: 'var(--text-secondary)'}}>{percentage}%</span>
+    <div style={{ display: 'flex', gap: '12px', marginBottom: '15px' }}>
+      <div style={{ 
+          width: 36, height: 36, borderRadius: '50%', background: 'var(--surface)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+          border: '1px solid var(--border-subtle)', flexShrink: 0
+      }}>
+        <FaUserSecret size={20} color="var(--text-main)" />
       </div>
-      <div style={{ height: '12px', background: 'var(--border-subtle)', borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
-        <div style={{ width: `${percentage}%`, height: '100%', background: color, borderRadius: '6px', transition: 'width 0.5s ease-out' }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ background: 'var(--surface)', padding: '10px 14px', borderRadius: '18px', border: '1px solid var(--border-subtle)', display: 'inline-block', minWidth: '150px' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '2px' }}>
+              Anónimo {comment.authorId?.slice(-4)}
+            </div>
+            <div style={{ fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
+              {comment.text}
+            </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '5px', paddingLeft: '10px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <span>{formatTimeAgo(new Date(comment.createdAt))}</span>
+            <button onClick={handleLike} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, color: isLiked ? '#ed4956' : 'var(--text-secondary)' }}>
+               {isLiked ? 'Te gusta' : 'Me gusta'} {likeCount > 0 && <span>({likeCount})</span>}
+            </button>
+            <button onClick={() => onReply(comment.authorId)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, color: 'var(--text-secondary)' }}>
+               Responder
+            </button>
+            <button onClick={() => onReport(comment)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+               <FaFlag />
+            </button>
+        </div>
       </div>
-      {selected && <div style={{textAlign: 'center', fontSize: '0.7rem', color: color, marginTop: '2px'}}>¡Tu voto!</div>}
+      <div style={{ paddingTop: '10px', paddingRight: '5px' }}>
+         <button onClick={handleLike} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            {isLiked ? <FaHeart size={14} color="#ed4956" /> : <FaRegHeart size={14} color="var(--text-secondary)" />}
+         </button>
+      </div>
     </div>
   );
 };
 
+// --- COMPONENTE PRINCIPAL ---
 export default function StoryView() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -59,18 +119,14 @@ export default function StoryView() {
   const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
-    // 1. Verificar Like Local
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
     if (likedStories.includes(id)) setIsLiked(true);
 
-    // 2. Verificar Voto Local
     const localVote = localStorage.getItem(`vote_${id}`);
     if (localVote) { setHasVoted(true); setVoteType(localVote); }
 
-    // 3. Registrar Lectura
     incrementStoryRead(id);
 
-    // 4. Firebase Snapshot
     const docRef = doc(db, "stories", id);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) { setStory({ id: docSnap.id, ...docSnap.data() }); } 
@@ -80,30 +136,15 @@ export default function StoryView() {
     return () => unsubscribe();
   }, [id]);
 
-  // ✅ MANEJADOR DE LIKE CORREGIDO
   const handleLike = async () => {
-    // 1. Optimistic UI
     const newStatus = !isLiked;
     setIsLiked(newStatus);
-    
-    // 2. LocalStorage
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
-    if (newStatus) {
-      if (!likedStories.includes(id)) likedStories.push(id);
-    } else {
-      const idx = likedStories.indexOf(id);
-      if (idx > -1) likedStories.splice(idx, 1);
-    }
+    if (newStatus) { if (!likedStories.includes(id)) likedStories.push(id); } 
+    else { const idx = likedStories.indexOf(id); if (idx > -1) likedStories.splice(idx, 1); }
     localStorage.setItem('liked_stories', JSON.stringify(likedStories));
-
-    // 3. Firebase
-    try { 
-        await updateDoc(doc(db, "stories", id), { likes: increment(newStatus ? 1 : -1) }); 
-    } 
-    catch (e) { 
-        console.error(e); 
-        setIsLiked(!newStatus); // Revertir si falla
-    }
+    try { await updateDoc(doc(db, "stories", id), { likes: increment(newStatus ? 1 : -1) }); } 
+    catch (e) { setIsLiked(!newStatus); }
   };
 
   const handleVote = async (type) => {
@@ -118,15 +159,42 @@ export default function StoryView() {
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     setIsSending(true);
-    const newComment = { id: Date.now().toString(), text: commentText, authorId: CURRENT_USER_ID, createdAt: new Date().toISOString() };
-    try { await updateDoc(doc(db, "stories", id), { comments: arrayUnion(newComment), commentsCount: increment(1) }); setCommentText(""); } 
+    const newComment = {
+      id: Date.now().toString(),
+      text: commentText,
+      authorId: CURRENT_USER_ID,
+      createdAt: new Date().toISOString(),
+      likes: []
+    };
+    try { 
+        await updateDoc(doc(db, "stories", id), { comments: arrayUnion(newComment), commentsCount: increment(1) }); 
+        setCommentText("");
+    } 
     catch (e) { console.error(e); } 
     finally { setIsSending(false); }
   };
 
+  const handleReportComment = async (comment) => {
+     if(window.confirm("¿Reportar este comentario?")) {
+         try {
+             await addDoc(collection(db, "reports"), {
+                 type: "comment", storyId: id, commentId: comment.id, content: comment.text,
+                 reportedBy: CURRENT_USER_ID, createdAt: serverTimestamp()
+             });
+             alert("Reportado.");
+         } catch (e) { alert("Error."); }
+     }
+  };
+
+  const handleReplyClick = (authorId) => {
+      setCommentText(`@Anon-${authorId.slice(-4)} `);
+      const input = document.getElementById("commentInput");
+      if(input) input.focus();
+  };
+
   const handleShare = async () => {
     if (navigator.share) {
-      try { await navigator.share({ title: story?.title || "InfielesRD", text: `🔥 Mira este bochinche: ${story?.title}`, url: window.location.href }); } 
+      try { await navigator.share({ title: story?.title, text: `🔥 Mira este bochinche: ${story?.title}`, url: window.location.href }); } 
       catch (err) {}
     } else { navigator.clipboard.writeText(window.location.href); alert("Enlace copiado"); }
   };
@@ -144,7 +212,9 @@ export default function StoryView() {
   const provLabel = provObj ? provObj.label : story.province;
 
   return (
-    <div className="fade-in" style={{ paddingBottom: "40px" }}>
+    <div className="fade-in" style={{ paddingBottom: "120px" }}> {/* Espacio extra abajo para que el input no tape nada */}
+      
+      {/* HEADER */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
         <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", fontSize: "1.2rem", color: "var(--text-main)", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}>
           <FaArrowLeft /> Volver
@@ -155,6 +225,7 @@ export default function StoryView() {
         </div>
       </div>
 
+      {/* STORY CARD */}
       <article style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-md)", overflow: "hidden", border: "1px solid var(--border-subtle)" }}>
         {toxicLevel > 1 && (
            <div style={{ background: `${toxicData.color}20`, color: toxicData.color, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '800', fontSize: '0.8rem', letterSpacing: '1px', borderBottom: `1px solid ${toxicData.color}40` }}>
@@ -185,6 +256,7 @@ export default function StoryView() {
         </div>
       </article>
 
+      {/* VEREDICTO */}
       <div style={{ marginTop: '30px', background: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-subtle)' }}>
         <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px'}}>
            <div style={{background: 'var(--text-main)', color: 'var(--surface)', padding: '8px', borderRadius: '8px'}}> <FaGavel size={20} /> </div>
@@ -205,25 +277,85 @@ export default function StoryView() {
         )}
       </div>
 
-      <div style={{ marginTop: "30px" }}>
-        <h3 style={{ marginBottom: "15px" }}>Comentarios ({story.commentsCount || 0})</h3>
-        <div style={{ display: "flex", gap: "10px", background: "var(--surface)", padding: "15px", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", border: "1px solid var(--border-subtle)" }}>
-          <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Escribe tu opinión..." style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: "1rem", color: "var(--text-main)" }} />
-          <button onClick={handleSendComment} disabled={!commentText.trim() || isSending} style={{ background: "var(--primary)", color: "white", border: "none", width: "40px", height: "40px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: !commentText.trim() ? 0.5 : 1 }}>
-            {isSending ? <FaSpinner className="spin-icon" /> : <FaPaperPlane />}
+      {/* SECCIÓN COMENTARIOS */}
+      <div style={{ marginTop: "30px", borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
+        <h3 style={{ marginBottom: "20px" }}>Comentarios ({story.commentsCount || 0})</h3>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {story.comments && story.comments.length > 0 ? (
+            story.comments.map((comment, idx) => (
+               <CommentItem 
+                  key={idx} comment={comment} storyId={id}
+                  allComments={story.comments} onReply={handleReplyClick} onReport={handleReportComment}
+               />
+            ))
+          ) : ( 
+            <div style={{ textAlign: "center", padding: '20px', color: "var(--text-secondary)" }}>
+               <p style={{fontStyle: 'italic'}}>Sé el primero en opinar...</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ✅ NUEVA BARRA DE INPUT: CÁPSULA FLOTANTE */}
+      <div style={{ 
+          position: 'fixed', 
+          bottom: '20px', 
+          left: '50%', 
+          transform: 'translateX(-50%)', 
+          width: '95%', 
+          maxWidth: '600px',
+          background: 'var(--surface)', 
+          padding: '8px 10px', 
+          borderRadius: '50px', // Cápsula
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', // Sombra elegante
+          border: '1px solid var(--border-subtle)',
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '10px',
+          zIndex: 1000
+      }}>
+          {/* Avatar Pequeño dentro de la barra */}
+          <div style={{ 
+              width: 38, height: 38, borderRadius: '50%', background: 'var(--bg-body)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              marginLeft: '5px'
+          }}>
+             <FaUserSecret color="var(--text-secondary)" size={18} />
+          </div>
+          
+          <input 
+              id="commentInput"
+              type="text" 
+              value={commentText} 
+              onChange={(e) => setCommentText(e.target.value)} 
+              placeholder={story.commentsCount === 0 ? "Sé el primero en opinar..." : "Agrega un comentario..."}
+              style={{ 
+                  flex: 1, 
+                  background: 'transparent', // Sin fondo
+                  border: 'none', // Sin borde
+                  fontSize: '0.95rem', 
+                  outline: 'none',
+                  color: 'var(--text-main)',
+                  padding: '5px'
+              }} 
+          />
+          
+          <button 
+              onClick={handleSendComment} 
+              disabled={!commentText.trim() || isSending} 
+              style={{ 
+                  width: 40, height: 40, borderRadius: '50%',
+                  background: !commentText.trim() ? 'var(--bg-body)' : 'var(--primary)', 
+                  border: 'none', 
+                  color: !commentText.trim() ? 'var(--text-secondary)' : 'white', 
+                  cursor: 'pointer', 
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                  marginRight: '2px'
+              }}
+          >
+             {isSending ? <FaSpinner className="spin-icon" size={16} /> : <FaPaperPlane size={16} />}
           </button>
-        </div>
-        <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "15px" }}>
-          {story.comments?.map((comment, idx) => (
-              <div key={idx} style={{ background: "var(--surface)", padding: "15px", borderRadius: "12px", border: "1px solid var(--border-subtle)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                   <span style={{fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)'}}>Anónimo-{comment.authorId?.slice(-4) || '???'}</span>
-                   <span style={{fontSize: '0.7rem', color: 'var(--text-secondary)'}}>{comment.createdAt ? formatTimeAgo(new Date(comment.createdAt)) : ''}</span>
-                </div>
-                <p style={{ margin: 0, fontSize: "0.95rem", color: "var(--text-main)" }}>{comment.text}</p>
-              </div>
-          ))}
-        </div>
       </div>
 
       {showReportModal && ( <ReportModal storyId={id} onClose={() => setShowReportModal(false)} /> )}
@@ -231,6 +363,21 @@ export default function StoryView() {
   );
 }
 
+// Sub-componentes Veredicto
+const VerdictBar = ({ label, count, total, color, onClick, selected }) => {
+  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div onClick={onClick} className="active-press" style={{ marginBottom: '12px', cursor: 'pointer', opacity: selected ? 1 : 0.8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', fontWeight: 600 }}>
+        <span style={{color: 'var(--text-main)'}}>{label}</span>
+        <span style={{color: 'var(--text-secondary)'}}>{percentage}%</span>
+      </div>
+      <div style={{ height: '12px', background: 'var(--border-subtle)', borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
+        <div style={{ width: `${percentage}%`, height: '100%', background: color, borderRadius: '6px', transition: 'width 0.5s ease-out' }} />
+      </div>
+    </div>
+  );
+};
 const verdictBtnStyle = (color) => ({
   padding: '15px', borderRadius: '12px', border: `1px solid ${color}`, background: 'transparent',
   color: 'var(--text-main)', fontWeight: 700, fontSize: '1rem', cursor: 'pointer',

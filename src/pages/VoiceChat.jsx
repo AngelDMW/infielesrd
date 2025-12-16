@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   collection,
   query,
   orderBy,
   onSnapshot,
   addDoc,
+  setDoc,
   serverTimestamp,
   doc,
   updateDoc,
@@ -12,16 +13,23 @@ import {
   arrayRemove,
   deleteDoc,
   getDoc,
-  runTransaction,
+  getDocs
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   FaMicrophone,
+  FaMicrophoneSlash,
   FaUsers,
   FaPlus,
   FaHeadset,
   FaSignOutAlt,
-  FaUserCircle,
+  FaUserSecret,
+  FaWaveSquare,
+  FaTimes,
+  FaLock,
+  FaUnlock,
+  FaShieldAlt,
+  FaCircle
 } from "react-icons/fa";
 import useAgora from "../hooks/useAgora";
 import { getAnonymousID } from "../utils/identity";
@@ -29,499 +37,452 @@ import Loader from "../components/Loader";
 
 const MY_ID = getAnonymousID();
 
-// Variable Global para manejar el "Anti-Rebote" de React Strict Mode
-let leaveTimer = null;
+// --- CONFIGURACIÓN DE SALAS PERMANENTES ---
+const OFFICIAL_ROOMS = [
+  { id: "official_patio", title: "El Patio 🌴", theme: "chill", isPermanent: true },
+  { id: "official_toxic", title: "Tóxicos Anónimos 🎭", theme: "toxic", isPermanent: true },
+  { id: "official_debate", title: "Debate Caliente 🔥", theme: "debate", isPermanent: true }
+];
 
-// --- FUNCIÓN DE SALIDA SEGURA ---
-const performLeaveRoom = async (roomId) => {
-  if (!roomId) return;
-  try {
-    const roomRef = doc(db, "voice_rooms", roomId);
-
-    // 1. Sacar al usuario
-    await updateDoc(roomRef, {
-      users: arrayRemove(MY_ID),
-    });
-
-    // 2. Verificar si quedó vacía para borrarla
-    const snap = await getDoc(roomRef);
-    if (snap.exists()) {
-      const users = snap.data().users || [];
-      if (users.length === 0) {
-        await deleteDoc(roomRef);
-        console.log("Sala borrada por inactividad.");
-      }
-    }
-  } catch (e) {
-    console.error("Error saliendo de la sala:", e);
-  }
+const ROOM_THEMES = {
+  chill: { color: "#3b82f6", label: "Chill & Hablar", icon: FaHeadset },
+  debate: { color: "#f59e0b", label: "Debate", icon: FaMicrophone },
+  toxic: { color: "#ef4444", label: "Tóxico", icon: FaWaveSquare },
 };
 
-// --- VISTA SALA ACTIVA ---
-const ActiveRoom = ({ roomInitialData, onLeave }) => {
-  const [roomData, setRoomData] = useState(roomInitialData);
-  const { isConnected, toggleMute } = useAgora(roomInitialData.id, MY_ID);
-  const [isMuted, setIsMuted] = useState(false);
-
-  // Referencia para saber si la salida fue manual (botón) o automática
-  const hasLeftManual = useRef(false);
-
-  // 1. Escuchar cambios en la sala (Participantes)
-  useEffect(() => {
-    const roomRef = doc(db, "voice_rooms", roomInitialData.id);
-    const unsub = onSnapshot(roomRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setRoomData({ id: docSnap.id, ...docSnap.data() });
-      } else {
-        // Si la sala desaparece, nos saca de la UI
-        if (!hasLeftManual.current) onLeave();
-      }
-    });
-    return unsub;
-  }, [roomInitialData.id, onLeave]);
-
-  // 2. Lógica de Ciclo de Vida (Entrada/Salida Blindada)
-  useEffect(() => {
-    const roomId = roomInitialData.id;
-
-    // A) AL MONTAR: Cancelamos cualquier salida pendiente (Fix Strict Mode)
-    if (leaveTimer) {
-      console.log("Cancelando salida automática (Reconexión detectada)");
-      clearTimeout(leaveTimer);
-      leaveTimer = null;
-    }
-
-    // B) MANEJAR CIERRE DE PESTAÑA (Esto debe ser inmediato)
-    const handleTabClose = () => {
-      performLeaveRoom(roomId);
-    };
-    window.addEventListener("beforeunload", handleTabClose);
-
-    // C) AL DESMONTAR: Programar salida con delay
-    return () => {
-      window.removeEventListener("beforeunload", handleTabClose);
-
-      // Si NO le dimos al botón de salir, asumimos que puede ser un refresh o navegación
-      // Esperamos 2 segundos antes de borrar al usuario.
-      if (!hasLeftManual.current) {
-        console.log("Programando salida automática en 2s...");
-        leaveTimer = setTimeout(() => {
-          performLeaveRoom(roomId);
-        }, 2000);
-      }
-    };
-  }, [roomInitialData.id]);
-
-  const handleManualLeave = async () => {
-    hasLeftManual.current = true; // Marcamos que fue voluntario
-    onLeave(); // Desmontamos UI
-
-    // Si hay un timer pendiente, lo limpiamos para ejecutar la salida YA
-    if (leaveTimer) clearTimeout(leaveTimer);
-
-    await performLeaveRoom(roomInitialData.id); // Ejecutamos salida inmediata en DB
-  };
-
-  const handleMute = () => {
-    const newState = toggleMute();
-    setIsMuted(newState);
-  };
-
-  return (
-    <div
-      className="fade-in"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 200,
-        background: "var(--surface)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        overflowY: "auto",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: "1.5rem",
-          marginBottom: "10px",
-          color: "var(--text-main)",
-          textAlign: "center",
-        }}
-      >
-        {roomData.name}
-      </h2>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          marginBottom: "30px",
-          color: "var(--text-secondary)",
-        }}
-      >
-        <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: isConnected ? "#2ecc71" : "#f1c40f",
-          }}
-        ></div>
-        {isConnected ? "En vivo" : "Conectando..."}
-      </div>
-
-      <div style={{ position: "relative", marginBottom: "30px" }}>
-        <div
-          style={{
-            width: 100,
-            height: 100,
-            borderRadius: "50%",
-            background: "var(--bg-body)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: isConnected ? "0 0 0 4px var(--primary)" : "none",
-          }}
-        >
-          <FaMicrophone size={40} color={isMuted ? "gray" : "var(--primary)"} />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "20px", marginBottom: "40px" }}>
-        <button
-          onClick={handleMute}
-          style={{
-            padding: "15px",
-            borderRadius: "50%",
-            border: "none",
-            background: isMuted ? "var(--text-secondary)" : "var(--bg-body)",
-            color: "white",
-            cursor: "pointer",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <FaMicrophone size={20} />
-        </button>
-        <button
-          onClick={handleManualLeave}
-          style={{
-            padding: "15px 30px",
-            borderRadius: "30px",
-            border: "none",
-            background: "#e74c3c",
-            color: "white",
-            fontWeight: 700,
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <FaSignOutAlt /> Salir
-        </button>
-      </div>
-
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "400px",
-          background: "var(--bg-body)",
-          borderRadius: "16px",
-          padding: "20px",
-          boxShadow: "inset 0 2px 5px rgba(0,0,0,0.05)",
-        }}
-      >
-        <h3
-          style={{
-            margin: "0 0 15px 0",
-            fontSize: "1rem",
-            color: "var(--text-main)",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <FaUsers /> Participantes ({roomData.users?.length || 0})
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {roomData.users &&
-            roomData.users.map((uid) => (
-              <div
-                key={uid}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "10px",
-                  background: "var(--surface)",
-                  borderRadius: "10px",
-                  border: "1px solid var(--border-subtle)",
-                }}
-              >
-                <FaUserCircle size={24} color="var(--text-secondary)" />
-                <span
-                  style={{
-                    fontSize: "0.9rem",
-                    color: "var(--text-main)",
-                    fontWeight: uid === MY_ID ? 700 : 400,
-                  }}
-                >
-                  {uid === MY_ID ? "Tú" : "Anónimo"}
-                  <span
-                    style={{
-                      fontSize: "0.7rem",
-                      color: "var(--text-secondary)",
-                      marginLeft: "5px",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    #{uid.slice(-4)}
-                  </span>
-                </span>
-              </div>
-            ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- COMPONENTE PRINCIPAL ---
 export default function VoiceChat() {
   const [rooms, setRooms] = useState([]);
-  const [activeRoomId, setActiveRoomId] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Estados de Interacción
+  const [activeRoomId, setActiveRoomId] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+  
+  // Estados para Sala Privada (Join)
+  const [passwordPromptRoom, setPasswordPromptRoom] = useState(null);
+  const [inputPassword, setInputPassword] = useState("");
 
+  // Inputs Creación
+  const [newRoomTitle, setNewRoomTitle] = useState("");
+  const [newRoomTheme, setNewRoomTheme] = useState("chill");
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [createPassword, setCreatePassword] = useState("");
+
+  // Hook Agora
+  const { isConnected, remoteUsers, toggleMute, isMuted } = useAgora(activeRoomId, MY_ID);
+
+  // --- 1. INICIALIZACIÓN Y LIMPIEZA ---
   useEffect(() => {
-    const q = query(
-      collection(db, "voice_rooms"),
-      orderBy("createdAt", "desc")
-    );
+    const initRooms = async () => {
+      // A. Crear Salas Oficiales si no existen
+      for (const room of OFFICIAL_ROOMS) {
+        const roomRef = doc(db, "voice_rooms", room.id);
+        const snap = await getDoc(roomRef);
+        if (!snap.exists()) {
+          await setDoc(roomRef, {
+            title: room.title,
+            theme: room.theme,
+            isPermanent: true,
+            createdAt: serverTimestamp(),
+            users: []
+          });
+        }
+      }
+
+      // B. Limpiar Salas de Usuarios Vacías
+      const q = query(collection(db, "voice_rooms"));
+      const snapshot = await getDocs(q);
+      snapshot.forEach(async (docSnap) => {
+        const data = docSnap.data();
+        if (!data.isPermanent && (!data.users || data.users.length === 0)) {
+          await deleteDoc(doc(db, "voice_rooms", docSnap.id));
+        }
+      });
+    };
+
+    initRooms();
+
+    // C. Escuchar Cambios en Tiempo Real
+    const q = query(collection(db, "voice_rooms"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const validRooms = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setRooms(validRooms);
+      setRooms(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => unsubscribe();
   }, []);
 
-  const joinRoom = async (room) => {
-    if (room.users && room.users.includes(MY_ID)) {
-      setActiveRoomId(room.id);
-      return;
-    }
-    try {
-      const roomRef = doc(db, "voice_rooms", room.id);
-      await updateDoc(roomRef, { users: arrayUnion(MY_ID) });
-      setActiveRoomId(room.id);
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo entrar a la sala.");
-    }
-  };
+  // --- 2. LOGICA DE UNIÓN Y CREACIÓN ---
 
-  const createRoom = async () => {
-    const name = prompt("Nombre de la sala:");
-    if (!name) return;
+  const handleCreateRoom = async (e) => {
+    e.preventDefault();
+    if (!newRoomTitle.trim()) return;
+    if (isPrivate && !createPassword.trim()) return alert("Pon una contraseña si es privada.");
+
     try {
-      const docRef = await addDoc(collection(db, "voice_rooms"), {
-        name: name.trim(),
+      const docData = {
+        title: newRoomTitle,
+        theme: newRoomTheme,
         createdAt: serverTimestamp(),
         users: [MY_ID],
-      });
+        hostId: MY_ID,
+        isPermanent: false,
+        isPrivate: isPrivate,
+        password: isPrivate ? createPassword : null
+      };
+
+      const docRef = await addDoc(collection(db, "voice_rooms"), docData);
+      
+      setIsCreating(false);
+      setNewRoomTitle("");
+      setCreatePassword("");
+      setIsPrivate(false);
       setActiveRoomId(docRef.id);
-    } catch (e) {
-      alert("Error creando sala");
+    } catch (error) {
+      console.error("Error creando:", error);
     }
   };
 
-  const activeRoomData = rooms.find((r) => r.id === activeRoomId);
-  if (activeRoomData) {
+  const handleTryJoin = (room) => {
+    if (activeRoomId) return alert("Sal de la sala actual primero.");
+
+    if (room.isPrivate) {
+      setPasswordPromptRoom(room);
+    } else {
+      joinRoomDirectly(room.id);
+    }
+  };
+
+  const submitPassword = () => {
+    if (inputPassword === passwordPromptRoom.password) {
+      joinRoomDirectly(passwordPromptRoom.id);
+      setPasswordPromptRoom(null);
+      setInputPassword("");
+    } else {
+      alert("Contraseña incorrecta 🚫");
+    }
+  };
+
+  const joinRoomDirectly = async (roomId) => {
+    try {
+      const roomRef = doc(db, "voice_rooms", roomId);
+      await updateDoc(roomRef, { users: arrayUnion(MY_ID) });
+      setActiveRoomId(roomId);
+    } catch (error) {
+      console.error("Error uniéndose:", error);
+    }
+  };
+
+  const handleLeaveRoom = async () => {
+    if (!activeRoomId) return;
+    const tempId = activeRoomId;
+    setActiveRoomId(null);
+
+    try {
+      const roomRef = doc(db, "voice_rooms", tempId);
+      await updateDoc(roomRef, { users: arrayRemove(MY_ID) });
+
+      const snap = await getDoc(roomRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (!data.isPermanent && (!data.users || data.users.length === 0)) {
+          await deleteDoc(roomRef);
+        }
+      }
+    } catch (error) {
+      console.error("Error saliendo:", error);
+    }
+  };
+
+  // --- 3. VISTA: DENTRO DE LA SALA (OVERLAY) ---
+  if (activeRoomId) {
+    const currentRoom = rooms.find(r => r.id === activeRoomId) || { title: "Sala", theme: "chill", users: [] };
+    const theme = ROOM_THEMES[currentRoom.theme || 'chill'];
+    const participants = currentRoom.users || [];
+
     return (
-      <ActiveRoom
-        roomInitialData={activeRoomData}
-        onLeave={() => setActiveRoomId(null)}
-      />
+      <div className="fade-in" style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2000,
+        background: 'linear-gradient(180deg, var(--bg-body) 0%, var(--surface) 100%)',
+        display: 'flex', flexDirection: 'column'
+      }}>
+        {/* Header Sala */}
+        <div style={{ padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button onClick={handleLeaveRoom} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <FaTimes size={24} color="var(--text-main)" />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.color, fontWeight: 700 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: theme.color, boxShadow: `0 0 10px ${theme.color}` }} />
+                EN VIVO
+            </div>
+        </div>
+
+        {/* CONTENIDO PRINCIPAL: Título y Lista */}
+        <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto' }}>
+            
+            <h1 style={{ textAlign: 'center', fontSize: '1.6rem', marginBottom: '5px', lineHeight: 1.2 }}>{currentRoom.title}</h1>
+            
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', opacity: 0.6, fontSize: '0.8rem' }}>
+                {currentRoom.isPermanent && <span style={{display: 'flex', alignItems: 'center', gap: '5px'}}><FaShieldAlt /> Oficial</span>}
+                {currentRoom.isPrivate && <span style={{display: 'flex', alignItems: 'center', gap: '5px'}}><FaLock /> Privada</span>}
+                <span style={{display: 'flex', alignItems: 'center', gap: '5px'}}><FaUsers /> {participants.length} conectados</span>
+            </div>
+            
+            {/* 🔴 LISTA DE PARTICIPANTES EN TIEMPO REAL */}
+            <div style={{ 
+                width: '100%', maxWidth: '400px', 
+                background: 'var(--surface)', borderRadius: '20px',
+                padding: '20px', boxShadow: 'var(--shadow-sm)',
+                border: '1px solid var(--border-subtle)'
+            }}>
+                <h3 style={{ margin: '0 0 15px 0', fontSize: '1rem', color: 'var(--text-secondary)' }}>Participantes</h3>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {participants.map(uid => {
+                        const isMe = uid === MY_ID;
+                        return (
+                            <div key={uid} style={{ 
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '10px', borderRadius: '12px',
+                                background: isMe ? `${theme.color}15` : 'var(--bg-body)',
+                                border: isMe ? `1px solid ${theme.color}` : '1px solid transparent'
+                            }}>
+                                <div style={{ 
+                                    width: 40, height: 40, borderRadius: '50%', 
+                                    background: 'var(--surface)', color: 'var(--text-main)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    border: '1px solid var(--border-subtle)'
+                                }}>
+                                    <FaUserSecret size={20} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                                        {isMe ? "Tú" : `Usuario ${uid.slice(-4)}`}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: isMe ? theme.color : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <FaCircle size={6} color={isMe ? '#4ade80' : 'var(--text-secondary)'} />
+                                        {isMe ? "Conectado" : "En la sala"}
+                                    </div>
+                                </div>
+                                {isMe && isMuted && <FaMicrophoneSlash color="var(--text-secondary)" />}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        </div>
+
+        {/* Controles Inferiores (CORREGIDO) */}
+        <div style={{ 
+            background: 'var(--surface)', padding: '30px', 
+            borderTopLeftRadius: '30px', borderTopRightRadius: '30px',
+            boxShadow: '0 -10px 40px rgba(0,0,0,0.1)',
+            display: 'flex', justifyContent: 'space-around', alignItems: 'center'
+        }}>
+            <button 
+                onClick={toggleMute}
+                className="active-press"
+                style={{ 
+                    width: 65, height: 65, borderRadius: '50%', 
+                    // ✅ AQUI ESTABA EL ERROR (doble border). YA CORREGIDO:
+                    background: isMuted ? 'var(--bg-body)' : 'var(--text-main)',
+                    color: isMuted ? 'var(--text-main)' : 'var(--surface)',
+                    border: isMuted ? '2px solid var(--text-main)' : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', fontSize: '1.5rem',
+                    boxShadow: '0 5px 15px rgba(0,0,0,0.1)'
+                }}
+            >
+                {isMuted ? <FaMicrophoneSlash /> : <FaMicrophone />}
+            </button>
+
+            <button 
+                onClick={handleLeaveRoom}
+                className="active-press"
+                style={{ 
+                    padding: '18px 40px', borderRadius: '50px', border: 'none',
+                    background: '#ef4444', color: 'white', fontWeight: 800, fontSize: '1.1rem',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                    boxShadow: '0 5px 20px rgba(239, 68, 68, 0.4)'
+                }}
+            >
+                <FaSignOutAlt /> SALIR
+            </button>
+        </div>
+      </div>
     );
   }
 
+  // --- 4. VISTA LISTADO DE SALAS ---
   return (
-    <div
-      className="fade-in"
-      style={{ padding: "20px", paddingBottom: "100px" }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "20px",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: "1.5rem",
-            fontWeight: 800,
-            margin: 0,
-            color: "var(--text-main)",
-          }}
-        >
-          Salas de Voz
-        </h1>
-        <button
-          onClick={createRoom}
-          className="active-press"
-          style={{
-            background: "var(--primary)",
-            color: "white",
-            border: "none",
-            padding: "10px 18px",
-            borderRadius: "20px",
-            fontWeight: 700,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            boxShadow: "var(--shadow-glow)",
-          }}
-        >
-          <FaPlus /> Crear
-        </button>
+    <div className="fade-in page-content" style={{ paddingBottom: '100px' }}>
+      
+      {/* Header Listado */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '30px' }}>
+         <div>
+            <h1 className="section-title" style={{marginBottom: 5}}>Salas de Voz 🎙️</h1>
+            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Habla en vivo con la comunidad.</p>
+         </div>
+         <button 
+            onClick={() => setIsCreating(true)}
+            className="active-press"
+            style={{
+                background: 'var(--text-main)', color: 'var(--surface)', border: 'none',
+                width: 50, height: 50, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 5px 15px rgba(0,0,0,0.2)', cursor: 'pointer'
+            }}
+         >
+            <FaPlus size={20} />
+         </button>
       </div>
 
-      {loading ? (
-        <Loader />
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: "15px",
-          }}
-        >
-          {rooms.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "60px 0",
-                color: "var(--text-secondary)",
-                gridColumn: "1 / -1",
-              }}
-            >
-              <FaHeadset
-                size={40}
-                style={{ opacity: 0.2, marginBottom: "10px" }}
+      {/* FORMULARIO CREAR SALA */}
+      {isCreating && (
+          <div className="fade-in" style={{ marginBottom: '30px', padding: '20px', background: 'var(--surface)', borderRadius: '20px', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '15px'}}>
+                  <h3 style={{ margin: 0 }}>Nueva Sala</h3>
+                  <button onClick={() => setIsCreating(false)} style={{background: 'none', border: 'none', cursor: 'pointer'}}><FaTimes /></button>
+              </div>
+              
+              <input 
+                 type="text" placeholder="Título de la sala..." autoFocus
+                 value={newRoomTitle} onChange={e => setNewRoomTitle(e.target.value)}
+                 style={{ 
+                     width: '100%', padding: '15px', borderRadius: '12px', 
+                     border: '1px solid var(--border-subtle)', 
+                     background: 'var(--bg-body)', color: 'var(--text-main)', 
+                     fontSize: '1rem', marginBottom: '15px', outline: 'none'
+                 }}
               />
-              <p>
-                No hay salas activas.
-                <br />
-                ¡Crea la primera y empieza el chisme! 🤫
-              </p>
-            </div>
-          ) : (
-            rooms.map((room) => (
-              <div
-                key={room.id}
-                onClick={() => joinRoom(room)}
-                className="active-press"
-                style={{
-                  background: "var(--surface)",
-                  borderRadius: "16px",
-                  padding: "20px",
-                  border: "1px solid var(--border-subtle)",
-                  cursor: "pointer",
-                  boxShadow: "var(--shadow-sm)",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 45,
-                        height: 45,
-                        borderRadius: "12px",
-                        background: "rgba(2, 136, 209, 0.1)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#0288d1",
-                      }}
-                    >
-                      <FaHeadset size={22} />
-                    </div>
-                    <div>
-                      <h3
+              
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                  {Object.entries(ROOM_THEMES).map(([key, data]) => (
+                      <button 
+                        key={key} 
+                        type="button"
+                        onClick={() => setNewRoomTheme(key)}
                         style={{
-                          margin: 0,
-                          fontSize: "1rem",
-                          color: "var(--text-main)",
+                            flex: 1, padding: '10px', borderRadius: '10px', border: newRoomTheme === key ? `2px solid ${data.color}` : '1px solid var(--border-subtle)',
+                            background: newRoomTheme === key ? `${data.color}20` : 'transparent', color: 'var(--text-main)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700
                         }}
                       >
-                        {room.name}
-                      </h3>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: "#e0f2f1",
-                      padding: "4px 8px",
-                      borderRadius: "6px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      height: "fit-content",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 6,
-                        height: 6,
-                        background: "#00b894",
-                        borderRadius: "50%",
-                      }}
-                    ></div>
-                    <span
-                      style={{
-                        fontSize: "0.65rem",
-                        fontWeight: 700,
-                        color: "#00695c",
-                      }}
-                    >
-                      LIVE
-                    </span>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    marginTop: "15px",
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <FaUsers /> {room.users ? room.users.length : 0} usuarios
-                </div>
+                          {data.label}
+                      </button>
+                  ))}
               </div>
-            ))
-          )}
-        </div>
+
+              <div style={{ marginBottom: '20px', padding: '10px', background: 'var(--bg-body)', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: isPrivate ? '10px' : '0' }}>
+                      <input 
+                        type="checkbox" id="privateCheck" 
+                        checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: 'var(--primary)' }}
+                      />
+                      <label htmlFor="privateCheck" style={{ fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}>Hacer sala privada 🔒</label>
+                  </div>
+                  
+                  {isPrivate && (
+                      <input 
+                        type="text" 
+                        placeholder="Contraseña de acceso..."
+                        value={createPassword}
+                        onChange={(e) => setCreatePassword(e.target.value)}
+                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--surface)', color: 'var(--text-main)', outline: 'none' }}
+                      />
+                  )}
+              </div>
+
+              <button onClick={handleCreateRoom} style={{ width: '100%', padding: '15px', borderRadius: '12px', border: 'none', background: 'var(--primary)', color: 'white', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>
+                  Lanzar Sala 🚀
+              </button>
+          </div>
+      )}
+
+      {/* MODAL PASSWORD (JOIN) */}
+      {passwordPromptRoom && (
+          <div className="fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+              <div style={{ background: 'var(--surface)', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
+                  <FaLock size={40} color="var(--text-main)" style={{ marginBottom: '15px' }} />
+                  <h3 style={{ margin: '0 0 10px 0' }}>Sala Privada</h3>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>Introduce la clave para entrar a "{passwordPromptRoom.title}".</p>
+                  
+                  <input 
+                    type="text" autoFocus
+                    placeholder="Contraseña..."
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', background: 'var(--bg-body)', color: 'var(--text-main)', marginBottom: '20px', textAlign: 'center', fontSize: '1.1rem', outline: 'none' }}
+                  />
+                  
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={() => setPasswordPromptRoom(null)} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--bg-body)', color: 'var(--text-main)', cursor: 'pointer' }}>Cancelar</button>
+                      <button onClick={submitPassword} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', background: 'var(--primary)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>Entrar</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* LISTA DE SALAS */}
+      {loading ? <Loader /> : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '15px' }}>
+              {rooms.sort((a, b) => (b.isPermanent ? 1 : 0) - (a.isPermanent ? 1 : 0)).map(room => {
+                  const theme = ROOM_THEMES[room.theme] || ROOM_THEMES.chill;
+                  const userCount = room.users ? room.users.length : 0;
+                  
+                  return (
+                      <div key={room.id} className="active-press" style={{
+                          background: 'var(--surface)', borderRadius: '20px', padding: '20px',
+                          border: room.isPermanent ? `2px solid ${theme.color}` : '1px solid var(--border-subtle)', 
+                          position: 'relative', overflow: 'hidden',
+                          boxShadow: 'var(--shadow-sm)'
+                      }}>
+                          {room.isPermanent && (
+                              <div style={{ position: 'absolute', top: 0, right: 0, background: theme.color, color: 'white', padding: '4px 10px', borderBottomLeftRadius: '10px', fontSize: '0.7rem', fontWeight: 700 }}>
+                                  OFICIAL
+                              </div>
+                          )}
+
+                          <div style={{ display: 'flex', alignItems: 'start', gap: '15px' }}>
+                              <div style={{ 
+                                  width: 50, height: 50, borderRadius: '15px', 
+                                  background: `${theme.color}20`, color: theme.color,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  flexShrink: 0
+                              }}>
+                                  <theme.icon size={24} />
+                              </div>
+                              
+                              <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                                      {room.isPrivate && <FaLock size={12} color="var(--text-secondary)" />}
+                                      <h3 style={{ margin: 0, fontSize: '1.1rem', lineHeight: 1.2 }}>{room.title}</h3>
+                                  </div>
+                                  
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                          <FaUsers /> {userCount} oyendo
+                                      </span>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <button 
+                            onClick={() => handleTryJoin(room)}
+                            style={{
+                                marginTop: '15px', width: '100%', padding: '12px', 
+                                borderRadius: '12px', border: 'none',
+                                background: 'var(--text-main)', color: 'var(--surface)', fontWeight: 700,
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                                opacity: room.isPrivate ? 0.9 : 1
+                            }}
+                          >
+                              {room.isPrivate ? <><FaUnlock /> Desbloquear</> : <><FaHeadset /> Unirme</>}
+                          </button>
+                      </div>
+                  );
+              })}
+          </div>
       )}
     </div>
   );

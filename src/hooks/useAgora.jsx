@@ -6,20 +6,19 @@ const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 export default function useAgora(roomId, userId) {
   const [isConnected, setIsConnected] = useState(false);
   const [remoteUsers, setRemoteUsers] = useState([]);
+  const [isMuted, setIsMuted] = useState(false); // Nuevo estado
   
-  // Usamos useRef para mantener persistencia del cliente y el track
-  // sin depender de los renderizados de React. Esto es CRUCIAL para el cleanup.
   const client = useRef(null);
   const localAudioTrack = useRef(null);
 
   useEffect(() => {
-    if (!APP_ID) return;
+    if (!APP_ID || !roomId || !userId) return;
 
     // 1. Crear Cliente
     client.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
     const init = async () => {
-      // Listeners de eventos
+      // Listeners
       client.current.on("user-published", async (user, mediaType) => {
         await client.current.subscribe(user, mediaType);
         if (mediaType === "audio") user.audioTrack.play();
@@ -36,8 +35,6 @@ export default function useAgora(roomId, userId) {
         
         // 3. Crear Audio (Micro)
         const track = await AgoraRTC.createMicrophoneAudioTrack();
-        
-        // Guardamos en la Referencia (NO en estado) para asegurar el cierre
         localAudioTrack.current = track;
         
         // Publicar
@@ -51,32 +48,32 @@ export default function useAgora(roomId, userId) {
 
     init();
 
-    // --- LIMPIEZA TOTAL (Al salir de la sala) ---
+    // Cleanup
     return () => {
-      // 1. Detener y Cerrar el Micro (Apaga la luz del hardware)
       if (localAudioTrack.current) {
         localAudioTrack.current.stop();
         localAudioTrack.current.close(); 
         localAudioTrack.current = null;
       }
-      // 2. Desconectar Cliente
       if (client.current) {
         client.current.leave();
         client.current = null;
       }
       setIsConnected(false);
+      setRemoteUsers([]);
     };
   }, [roomId, userId]);
 
-  // Función Mute
-  const toggleMute = () => {
+  // ✅ Nueva Función: Alternar Mute
+  const toggleMute = async () => {
     if (localAudioTrack.current) {
-      const isMuted = localAudioTrack.current.muted;
-      localAudioTrack.current.setMuted(!isMuted);
-      return !isMuted;
+      const currentMuted = localAudioTrack.current.muted;
+      await localAudioTrack.current.setMuted(!currentMuted);
+      setIsMuted(!currentMuted);
+      return !currentMuted;
     }
     return false;
   };
 
-  return { isConnected, toggleMute, remoteUsers };
+  return { isConnected, remoteUsers, toggleMute, isMuted };
 }

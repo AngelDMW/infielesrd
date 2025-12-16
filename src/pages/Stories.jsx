@@ -37,9 +37,9 @@ export default function Stories() {
   const categoryParam = searchParams.get("category");
   const [selectedCategory, setSelectedCategory] = useState(categoryParam || "all");
   
-  // 🔥 Nuevo Estado para el Buscador Integrado
+  // Estados del Buscador
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSearching, setIsSearching] = useState(false); // Para saber si estamos en modo búsqueda
+  const [isSearching, setIsSearching] = useState(false);
 
   // Sincronizar URL con Categoría
   useEffect(() => {
@@ -47,7 +47,18 @@ export default function Stories() {
     setSelectedCategory(currentCat);
   }, [searchParams]);
 
-  // Cargar Historias (Feed Normal)
+  // ✅ 1. EFECTO INTELIGENTE: Si borras el texto, resetea todo
+  useEffect(() => {
+    if (searchTerm === "") {
+        setIsSearching(false);
+        // Solo recargamos si no estábamos ya en el estado inicial
+        if (isSearching) {
+            loadStories(true);
+        }
+    }
+  }, [searchTerm]);
+
+  // Cargar Historias (Feed Normal Paginado)
   const loadStories = async (isInitialLoad = true) => {
     if (isInitialLoad) setLoading(true);
     
@@ -87,50 +98,43 @@ export default function Stories() {
       console.error("Error cargando feed:", error);
     } finally {
       setLoading(false);
-      setIsSearching(false);
     }
   };
 
-  // 🔥 Función de Búsqueda Profunda (Firebase)
-  const performDatabaseSearch = async () => {
-    if (!searchTerm.trim()) {
-        loadStories(true); // Si borra, vuelve al feed normal
-        return;
-    }
+  // ✅ 2. BUSCADOR INTELIGENTE (Client-Side Search)
+  // Descarga las últimas 100 historias y filtra en memoria para ignorar mayúsculas/acentos
+  const handleSearchSubmit = async (e) => {
+    e.preventDefault();
+    if (!searchTerm.trim()) return;
 
     setLoading(true);
-    setIsSearching(true); // Activamos modo búsqueda
+    setIsSearching(true);
 
     try {
-        // NOTA: Firestore no tiene búsqueda "LIKE %texto%" nativa.
-        // Usamos un truco de rango (startAt/endAt) para buscar por prefijo del título.
-        // Para búsqueda avanzada real se necesitaría Algolia o ElasticSearch.
+        // Obtenemos un lote grande de historias aprobadas (Ej: últimas 50 o 100)
+        // Esto evita el problema de que Firebase no soporte "CONTAINS" o "Ignorar Mayúsculas"
         const q = query(
             collection(db, "stories"),
             where("status", "==", "approved"),
-            where("title", ">=", searchTerm),
-            where("title", "<=", searchTerm + '\uf8ff'),
-            limit(20)
+            orderBy("createdAt", "desc"),
+            limit(50) // Ajustar según necesidad. 50 es un buen número para búsqueda rápida.
         );
 
         const snapshot = await getDocs(q);
-        const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        // Filtro adicional en cliente para asegurar (case insensitive)
-        const filteredResults = results.filter(s => 
-            s.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            s.content.toLowerCase().includes(searchTerm.toLowerCase())
+        const term = searchTerm.toLowerCase();
+
+        // Filtrado en JavaScript (Más potente que Firebase nativo)
+        const filteredResults = allDocs.filter(s => 
+            (s.title && s.title.toLowerCase().includes(term)) || 
+            (s.content && s.content.toLowerCase().includes(term))
         );
 
         setStories(filteredResults);
-        setHasMore(false); // En búsqueda no paginamos igual
+        setHasMore(false); // En búsqueda deshabilitamos "cargar más" por simplicidad
     } catch (error) {
         console.error("Error en búsqueda:", error);
-        // Fallback: Filtrar lo que ya teníamos cargado si falla la red
-        const localFilter = stories.filter(s => 
-            s.title.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-        setStories(localFilter);
     } finally {
         setLoading(false);
     }
@@ -138,33 +142,29 @@ export default function Stories() {
 
   // Efecto para recargar si cambia la categoría (y limpiar búsqueda)
   useEffect(() => {
-    setSearchTerm("");
-    setIsSearching(false);
-    setStories([]);
-    setLastVisible(null);
-    setHasMore(true);
-    loadStories(true);
+    if (!isSearching) {
+        setStories([]);
+        setLastVisible(null);
+        setHasMore(true);
+        loadStories(true);
+    }
   }, [selectedCategory]);
 
-  // Manejo de cambio de categoría
   const handleCategoryChange = (cat) => {
+    // Si cambia categoría, salimos del modo búsqueda
+    setSearchTerm("");
+    setIsSearching(false);
     if (cat === "all") setSearchParams({});
     else setSearchParams({ category: cat });
-  };
-
-  // Manejo del Submit del Buscador
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    performDatabaseSearch();
   };
 
   return (
     <div className="fade-in" style={{ paddingBottom: '80px' }}>
       
-      {/* --- HEADER CON BUSCADOR --- */}
+      {/* HEADER */}
       <div style={{ marginBottom: "20px" }}>
         
-        {/* Título */}
+        {/* Título Sección */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "15px" }}>
           <div style={{
               background: "var(--surface)", padding: "10px", borderRadius: "50%",
@@ -175,7 +175,7 @@ export default function Stories() {
           <h1 style={{ fontSize: "1.5rem", fontWeight: 800, margin: 0 }}>Explorar</h1>
         </div>
 
-        {/* 🔍 BARRA DE BÚSQUEDA INTEGRADA */}
+        {/* 🔍 BARRA DE BÚSQUEDA CORREGIDA */}
         <form 
             onSubmit={handleSearchSubmit}
             style={{ position: 'relative', marginBottom: '10px' }}
@@ -188,7 +188,7 @@ export default function Stories() {
             />
             <input 
                 type="text" 
-                placeholder="Buscar chisme por título..." 
+                placeholder="Buscar chisme..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
@@ -204,19 +204,18 @@ export default function Stories() {
                     transition: 'all 0.2s'
                 }}
             />
-            {/* Botón de limpiar o buscar */}
+            {/* Botón X para limpiar */}
             {searchTerm && (
                 <button 
                     type="button"
                     onClick={() => {
                         setSearchTerm("");
-                        setIsSearching(false);
-                        loadStories(true); // Recargar feed original
+                        // El useEffect se encargará de resetear el feed
                     }}
                     style={{
                         position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)',
                         background: 'none', border: 'none', color: 'var(--text-secondary)',
-                        padding: '10px', cursor: 'pointer'
+                        padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center'
                     }}
                 >
                     <FaTimes />
@@ -226,7 +225,7 @@ export default function Stories() {
 
       </div>
 
-      {/* --- FILTROS DE CATEGORÍA (Ocultar si estamos buscando para no confundir) --- */}
+      {/* FILTROS (Ocultar si estamos buscando) */}
       {!isSearching && (
           <div
             style={{
@@ -252,21 +251,20 @@ export default function Stories() {
           </div>
       )}
 
-      {/* --- RESULTADOS DE BÚSQUEDA --- */}
-      {isSearching && (
-          <div style={{ marginBottom: '20px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              Resultados para: <strong>"{searchTerm}"</strong>
-          </div>
-      )}
-
-      {/* --- LISTA DE HISTORIAS --- */}
+      {/* RESULTADOS O FEED */}
       <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
         
+        {isSearching && (
+            <div style={{fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '-10px'}}>
+                Resultados para: <strong>{searchTerm}</strong>
+            </div>
+        )}
+
         {stories.length === 0 && !loading && (
           <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
             {isSearching 
-                ? "No encontramos chismes con ese nombre. Intenta otra palabra." 
-                : "No hay historias en esta categoría aún."}
+                ? "No encontramos nada con esa palabra. 🧐" 
+                : "No hay historias aquí todavía."}
           </div>
         )}
 
@@ -277,11 +275,11 @@ export default function Stories() {
 
       {loading && (
         <div style={{ padding: 20 }}>
-          <Loader message={isSearching ? "Buscando..." : "Cargando historias..."} />
+          <Loader message={isSearching ? "Buscando en la base de datos..." : "Cargando historias..."} />
         </div>
       )}
 
-      {/* Botón Cargar Más (Solo en modo Feed normal) */}
+      {/* Botón Cargar Más (Solo en Feed normal) */}
       {!loading && hasMore && !isSearching && (
         <button
           onClick={() => loadStories(false)}
@@ -300,7 +298,6 @@ export default function Stories() {
   );
 }
 
-// Estilo auxiliar para botones de filtro
 const filterBtnStyle = (isActive) => ({
   padding: "8px 16px",
   borderRadius: "20px",

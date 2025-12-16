@@ -1,42 +1,39 @@
-import { Routes, Route, Navigate } from "react-router-dom";
-import Layout from "./components/Layout"; // ✅ Importar Layout
+import { Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
 import Home from "./pages/Home";
-import Stories from "./pages/Stories";
 import StoryView from "./pages/StoryView";
-import Admin from "./pages/Admin";
-import AdminLogin from "./pages/AdminLogin";
-import Submit from "./pages/Submit";
+import SubmitStory from "./pages/SubmitStory";
+import Stories from "./pages/Stories";
 import VoiceChat from "./pages/VoiceChat";
-import Search from "./pages/Search";
-import NotFound from "./pages/NotFound";
-import { useAuth } from "./context/AuthContext";
+import Heatmap from "./pages/Heatmap"; // ✅ IMPORTADO
+import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
-const ProtectedRoute = ({ children }) => {
-  const { currentUser, loading } = useAuth();
-  if (loading) return null;
-  if (!currentUser) return <Navigate to="/adminlogin" replace />;
-  return children;
-};
-
-export default function App() {
+function App() {
   return (
-    <Routes>
-      {/* Rutas Públicas dentro del Layout Responsivo */}
-      <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/stories" element={<Stories />} />
-        <Route path="/story/:id" element={<StoryView />} />
-        <Route path="/submit" element={<Submit />} />
-        <Route path="/voice-chat" element={<VoiceChat />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-
-      {/* Rutas de Admin (Pantalla completa, sin Layout social) */}
-      <Route path="/adminlogin" element={<AdminLogin />} />
-      <Route path="/adminpanel" element={
-          <ProtectedRoute><Admin /></ProtectedRoute>
-      } />
-    </Routes>
+    <ThemeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="stories" element={<Stories />} />
+            <Route path="story/:id" element={<StoryView />} />
+            <Route path="ranking" element={<Heatmap />} /> {/* ✅ RUTA AGREGADA */}
+            <Route path="voice-chat" element={<VoiceChat />} />
+            <Route
+              path="submit"
+              element={
+                <ProtectedRoute>
+                  <SubmitStory />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
+
+export default App;

@@ -1,5 +1,14 @@
 import { Link, useLocation } from "react-router-dom";
-import { FaHome, FaCompass, FaMicrophone, FaPlusCircle, FaMoon, FaSun, FaUserSecret } from "react-icons/fa";
+import { 
+  FaHome, 
+  FaCompass, 
+  FaMicrophone, 
+  FaPlusCircle, 
+  FaMoon, 
+  FaSun, 
+  FaUserSecret, 
+  FaMapMarkedAlt // ✅ IMPORTADO
+} from "react-icons/fa";
 import { getAnonymousID } from "../utils/identity";
 import { useTheme } from "../context/ThemeContext";
 import BrandLogo from "./BrandLogo";
@@ -14,6 +23,7 @@ export default function Sidebar() {
   const navItems = [
     { path: "/", icon: FaHome, label: "Inicio" },
     { path: "/stories", icon: FaCompass, label: "Explorar" },
+    { path: "/ranking", icon: FaMapMarkedAlt, label: "Ranking 🔥" }, // ✅ AGREGADO
     { path: "/voice-chat", icon: FaMicrophone, label: "Salas de Voz" },
   ];
 
@@ -36,18 +46,17 @@ export default function Sidebar() {
               className="active-press"
               style={{
                 display: 'flex', alignItems: 'center', gap: '16px',
-                padding: '14px 20px', // Buen espacio interno
+                padding: '14px 20px', 
                 borderRadius: '16px', 
                 textDecoration: 'none',
                 color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
                 background: isActive ? 'var(--surface)' : 'transparent',
                 fontWeight: isActive ? 800 : 600,
-                fontSize: '1.05rem', // Letra un poco más grande
+                fontSize: '1.05rem', 
                 transition: 'all 0.2s',
                 borderLeft: isActive ? '4px solid var(--primary)' : '4px solid transparent'
               }}
             >
-              {/* ✅ ÍCONOS MÁS GRANDES (26px) */}
               <item.icon size={26} />
               <span>{item.label}</span>
             </Link>
@@ -71,7 +80,6 @@ export default function Sidebar() {
             boxShadow: '0 4px 12px rgba(217, 4, 41, 0.3)'
           }}
         >
-          {/* ✅ ÍCONO GRANDE (24px) */}
           <FaPlusCircle size={24} />
           <span>Contar Historia</span>
         </Link>
@@ -96,7 +104,6 @@ export default function Sidebar() {
                color: 'var(--text-main)',
                boxShadow: 'var(--shadow-sm)'
             }}>
-               {/* ✅ ÍCONO USUARIO GRANDE (22px) */}
                <FaUserSecret size={22} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

@@ -37,7 +37,7 @@ export default function Home() {
         const qRec = query(
           collection(db, "stories"),
           where("status", "==", "approved"),
-          orderBy("publishedAt", "desc"),
+          orderBy("createdAt", "desc"),
           limit(10)
         );
         const snapRec = await getDocs(qRec);

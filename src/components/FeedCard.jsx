@@ -91,28 +91,35 @@ export default function FeedCard({ story }) {
     }
   };
 
-  // ✅ FUNCIÓN GENERAR IMAGEN MEJORADA (Diseño Premium + Fix Parpadeo + Texto Completo)
+  // ✅ FUNCIÓN GENERAR IMAGEN CORREGIDA (Fix de renderizado vacío)
   const handleGenerateImage = async (e) => {
     e.preventDefault();
     if (generatingImage) return;
     setGeneratingImage(true);
     try {
       const element = document.createElement("div");
-      // Configuración del contenedor invisible
+      
+      // --- ESTILOS DEL CONTENEDOR OCULTO ---
+      // Usamos opacity: 0 y z-index negativo en lugar de sacarlo de la pantalla.
+      // Esto asegura que el navegador sí renderice el contenido interno.
       element.style.position = "fixed";
       element.style.top = "0";
-      element.style.left = "-3000px"; // Movemos lejos para evitar parpadeo
-      element.style.width = "1080px"; // Ancho HD
-      // Altura mínima para que quepa contenido, pero flexible
-      element.style.minHeight = "1920px"; 
-      element.style.zIndex = "-1";
-      element.style.visibility = "visible";
+      element.style.left = "0";
+      element.style.zIndex = "-9999"; // Detrás de todo
+      element.style.opacity = "0";    // Totalmente transparente (evita parpadeo visual)
+      element.style.pointerEvents = "none"; // Evita interacción
+
+      element.style.width = "1080px"; // Ancho fijo HD
+      // Altura flexible: quitar minHeight fijo para que se ajuste al contenido real
+      // element.style.minHeight = "1920px"; 
+      
       // Fondo Gradiente Premium Oscuro
       element.style.background = `linear-gradient(135deg, #0f172a 0%, #1e293b 100%)`;
       element.style.display = "flex";
       element.style.flexDirection = "column";
       element.style.padding = "80px";
-      element.style.fontFamily = "'Inter', sans-serif"; // Asegúrate de que esta fuente se cargue en index.html o usa sans-serif genérico
+      // Usamos una fuente del sistema segura para evitar problemas de carga
+      element.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
       element.style.boxSizing = "border-box";
       element.style.color = "white";
       
@@ -129,8 +136,8 @@ export default function FeedCard({ story }) {
         <div style="flex: 1; display: flex; flexDirection: column; justify-content: space-between;">
           
           <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 60px;">
-              <div style="background: #e11d48; padding: 15px; border-radius: 20px; display: flex;">
-                 <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 448 512" height="50" width="50" xmlns="http://www.w3.org/2000/svg" style="color: white;"><path d="M416 208H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32zm0 160H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32zm0-320H32C14.33 48 0 62.33 0 80v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32V80c0-17.67-14.33-32-32-32z"></path></svg>
+              <div style="background: #e11d48; padding: 15px; border-radius: 20px; display: flex; align-items: center; justify-content: center;">
+                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="50" height="50" fill="white"><path d="M416 208H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32zm0 160H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32zm0-320H32C14.33 48 0 62.33 0 80v32c0 17.67 14.33 32 32 32h384c17.67 0 32-14.33 32-32V80c0-17.67-14.33-32-32-32z"/></svg>
               </div>
               <h1 style="font-size: 60px; font-weight: 900; color: white; margin: 0; letter-spacing: -1px;">
                 Infieles<span style="color: #e11d48;">RD</span>
@@ -173,14 +180,14 @@ export default function FeedCard({ story }) {
       `;
       document.body.appendChild(element);
       
-      // Delay para asegurar renderizado de fuentes e imágenes
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Delay IMPORTANTE para asegurar que el navegador pinte el contenido invisible
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const blob = await toBlob(element, { 
           quality: 0.95, 
-          backgroundColor: '#0f172a', // Color de fondo de respaldo
-          width: 1080, // Forzar ancho
-          // No forzamos altura para que capture todo el contenido
+          backgroundColor: '#0f172a',
+          width: 1080, // Forzamos el ancho de captura
+          // NO forzamos height, dejamos que la librería calcule la altura total del contenido
       });
       
       document.body.removeChild(element);

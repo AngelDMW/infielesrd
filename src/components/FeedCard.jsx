@@ -5,7 +5,7 @@ import { toBlob } from "html-to-image";
 import {
   FaHeart, FaRegHeart, FaRegComment, FaRegPaperPlane, FaWhatsapp,
   FaBookmark, FaRegBookmark, FaEllipsisH, FaUserSecret, FaSpinner,
-  FaRadiation, FaBiohazard, FaPepperHot, FaMapMarkerAlt, FaFireAlt
+  FaRadiation, FaBiohazard, FaPepperHot, FaMapMarkerAlt
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants"; 
 import { doc, updateDoc, increment } from "firebase/firestore";
@@ -91,34 +91,32 @@ export default function FeedCard({ story }) {
     }
   };
 
-  // ✅ FUNCIÓN GENERAR IMAGEN CORREGIDA (Fix de renderizado vacío)
+  // ✅ FUNCIÓN CORREGIDA PARA MÓVILES (Fuerza Bruta)
   const handleGenerateImage = async (e) => {
     e.preventDefault();
     if (generatingImage) return;
     setGeneratingImage(true);
+    
     try {
       const element = document.createElement("div");
       
-      // --- ESTILOS DEL CONTENEDOR OCULTO ---
-      // Usamos opacity: 0 y z-index negativo en lugar de sacarlo de la pantalla.
-      // Esto asegura que el navegador sí renderice el contenido interno.
+      // --- ESTRATEGIA MÓVIL ---
+      // 1. Z-Index negativo profundo (detrás de la app)
+      // 2. Opacidad 1 (VISIBLE) - Crucial para que iOS renderice el texto
+      // 3. Posición fija top/left 0
       element.style.position = "fixed";
       element.style.top = "0";
       element.style.left = "0";
-      element.style.zIndex = "-9999"; // Detrás de todo
-      element.style.opacity = "0";    // Totalmente transparente (evita parpadeo visual)
-      element.style.pointerEvents = "none"; // Evita interacción
-
-      element.style.width = "1080px"; // Ancho fijo HD
-      // Altura flexible: quitar minHeight fijo para que se ajuste al contenido real
-      // element.style.minHeight = "1920px"; 
+      element.style.zIndex = "-9999"; 
+      element.style.width = "1080px"; 
+      // Sin opacidad ni visibilidad oculta. Confiamos en que z-index lo oculte.
       
-      // Fondo Gradiente Premium Oscuro
+      // Fondo Gradiente
       element.style.background = `linear-gradient(135deg, #0f172a 0%, #1e293b 100%)`;
       element.style.display = "flex";
       element.style.flexDirection = "column";
       element.style.padding = "80px";
-      // Usamos una fuente del sistema segura para evitar problemas de carga
+      // Usamos fuentes del sistema para asegurar carga rápida en móvil
       element.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
       element.style.boxSizing = "border-box";
       element.style.color = "white";
@@ -131,9 +129,9 @@ export default function FeedCard({ story }) {
       
       const locBadge = provLabel ? `<div style="margin-top: 20px; color: #94a3b8; font-size: 30px; display: flex; align-items: center; gap: 15px;"><span style="font-size: 36px">📍</span> ${provLabel}</div>` : '';
 
-      // --- HTML DEL DISEÑO PREMIUM ---
+      // HTML CON ESTILOS INLINE (Más seguro para html-to-image)
       element.innerHTML = `
-        <div style="flex: 1; display: flex; flexDirection: column; justify-content: space-between;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
           
           <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 60px;">
               <div style="background: #e11d48; padding: 15px; border-radius: 20px; display: flex; align-items: center; justify-content: center;">
@@ -163,45 +161,46 @@ export default function FeedCard({ story }) {
               ${story.title}
             </h1>
 
-            <p style="font-size: 40px; line-height: 1.5; color: #334155; font-weight: 500; white-space: pre-wrap;">
-              ${story.content}
-            </p>
+            <p style="font-size: 40px; line-height: 1.5; color: #334155; font-weight: 500; white-space: pre-wrap;">${story.content}</p>
 
           </div>
           
-          <div style="margin-top: 60px; display: flex; justify-content: center; align-items: center; flexDirection: column; gap: 20px;">
-              <div style="background: #e11d48; color: white; padding: 20px 50px; border-radius: 100px; font-size: 36px; font-weight: 800; display: flex; align-items: center; gap: 15px; box-shadow: 0 20px 40px -10px rgba(225, 29, 72, 0.5);">
-                 🔥 Leer chisme completo en la app
+          <div style="margin-top: 60px; display: flex; justify-content: center; align-items: center; flex-direction: column; gap: 20px;">
+              <div style="background: #e11d48; color: white; padding: 20px 50px; border-radius: 100px; font-size: 36px; font-weight: 800; display: flex; align-items: center; gap: 15px;">
+                 🔥 Leer en infielesrd.com
               </div>
-              <span style="font-size: 32px; color: #94a3b8; font-weight: 600; margin-top: 20px;">infielesrd.com</span>
           </div>
 
         </div>
       `;
       document.body.appendChild(element);
       
-      // Delay IMPORTANTE para asegurar que el navegador pinte el contenido invisible
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // ⏳ ESPERA LARGA PARA MÓVILES (1 SEGUNDO)
+      // Esto da tiempo al procesador del celular para renderizar el nodo oculto
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const blob = await toBlob(element, { 
           quality: 0.95, 
           backgroundColor: '#0f172a',
-          width: 1080, // Forzamos el ancho de captura
-          // NO forzamos height, dejamos que la librería calcule la altura total del contenido
+          width: 1080,
+          // Permitir que la altura sea dinámica para que no corte texto
+          style: {
+             'visibility': 'visible',
+             'z-index': '9999' // Truco interno para forzar captura
+          }
       });
       
       document.body.removeChild(element);
       
-      if (!blob) throw new Error("Error generando la imagen");
+      if (!blob) throw new Error("Blob nulo");
       
       const file = new File([blob], `bochinche-${story.id}.png`, { type: "image/png" });
       
-      // Intentar compartir nativamente o descargar
       if (navigator.share && navigator.canShare({ files: [file] })) { 
           await navigator.share({ 
               files: [file], 
-              title: "🔥 Bochinche de InfielesRD",
-              text: `Mira este chisme: ${story.title}`
+              title: "InfielesRD",
+              text: `😱 ${story.title}`
           }); 
       } else { 
           const url = URL.createObjectURL(blob); 
@@ -209,11 +208,10 @@ export default function FeedCard({ story }) {
           link.href = url; 
           link.download = `bochinche-${story.id}.png`; 
           link.click(); 
-          URL.revokeObjectURL(url);
       }
     } catch (err) { 
-        console.error(err); 
-        alert("Error al generar la imagen. Intenta de nuevo."); 
+        console.error("Fallo generacion imagen:", err); 
+        alert("No se pudo generar la imagen. Tu celular podría tener poca memoria disponible."); 
     } finally { 
         setGeneratingImage(false); 
     }
@@ -269,7 +267,7 @@ export default function FeedCard({ story }) {
             {isLiked ? <FaHeart size={26} color="#ed4956" /> : <FaRegHeart size={26} color="var(--text-main)" />}
           </button>
           
-          {/* ✅ COMENTARIOS (Con número) */}
+          {/* COMENTARIOS */}
           <Link to={`/story/${story.id}#comments`} style={{ color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px", textDecoration: "none" }}>
             <FaRegComment size={24} style={{ transform: "scaleX(-1)" }} />
             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{story.commentsCount || 0}</span>

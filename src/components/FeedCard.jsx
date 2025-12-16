@@ -26,7 +26,6 @@ export default function FeedCard({ story }) {
   const [isSaved, setIsSaved] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
 
-  // Verificar si ya le di like al cargar
   useEffect(() => {
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
     if (likedStories.includes(story.id)) {
@@ -92,6 +91,7 @@ export default function FeedCard({ story }) {
     }
   };
 
+  // ✅ FUNCIÓN GENERAR IMAGEN CORREGIDA
   const handleGenerateImage = async (e) => {
     e.preventDefault();
     if (generatingImage) return;
@@ -107,7 +107,16 @@ export default function FeedCard({ story }) {
       element.style.alignItems = "center";
       element.style.padding = "80px";
       element.style.fontFamily = "'Outfit', sans-serif";
-      element.style.position = "fixed"; element.style.left = "-9999px"; element.style.top = "0";
+      
+      // ✅ CORRECCIÓN AQUÍ:
+      // En lugar de sacarlo de la pantalla (left: -9999px),
+      // lo ponemos fijo en el fondo (z-index negativo).
+      // Así el navegador sí lo renderiza.
+      element.style.position = "fixed";
+      element.style.top = "0";
+      element.style.left = "0";
+      element.style.zIndex = "-9999";
+      element.style.visibility = "visible"; // Asegurar visibilidad para el motor de render
       
       const toxicBadge = toxicLevel > 1 ? `<div style="margin-bottom: 20px; background: ${toxicData.color}; color: white; padding: 10px 30px; border-radius: 50px; font-size: 30px; font-weight: bold;">⚠️ Nivel: ${toxicData.label}</div>` : '';
       const locBadge = provLabel ? `<div style="margin-top: 10px; color: #aaa; font-size: 24px; display: flex; align-items: center; gap: 10px;">📍 ${provLabel}</div>` : '';
@@ -131,13 +140,17 @@ export default function FeedCard({ story }) {
         </div>
       `;
       document.body.appendChild(element);
+      
+      // Añadimos un pequeño delay para asegurar que los estilos se apliquen antes de la foto
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const blob = await toBlob(element, { quality: 0.95, backgroundColor: '#1a1a1a' });
       document.body.removeChild(element);
       if (!blob) throw new Error("Error imagen");
       const file = new File([blob], "story.png", { type: "image/png" });
       if (navigator.share && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Mira este chisme" }); } 
       else { const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `story-${story.id}.png`; link.click(); }
-    } catch (err) { console.error(err); alert("Error al generar imagen"); } finally { setGeneratingImage(false); }
+    } catch (err) { console.error(err); alert("Error al generar imagen. Intenta de nuevo."); } finally { setGeneratingImage(false); }
   };
 
   return (
@@ -185,28 +198,22 @@ export default function FeedCard({ story }) {
       {/* FOOTER */}
       <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--border-subtle)", width: "100%", boxSizing: "border-box" }}>
         
-        {/* Acciones Izquierda */}
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          
-          {/* LIKE */}
           <button onClick={handleLike} className="active-press" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
             {isLiked ? <FaHeart size={26} color="#ed4956" /> : <FaRegHeart size={26} color="var(--text-main)" />}
           </button>
           
-          {/* ✅ COMENTARIOS (Ahora muestra el número) */}
+          {/* ✅ COMENTARIOS (Con número) */}
           <Link to={`/story/${story.id}#comments`} style={{ color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px", textDecoration: "none" }}>
             <FaRegComment size={24} style={{ transform: "scaleX(-1)" }} />
-            {/* Contador de Comentarios */}
             <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{story.commentsCount || 0}</span>
           </Link>
           
-          {/* COMPARTIR */}
           <button onClick={handleShareLink} className="active-press" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-main)" }}>
             <FaRegPaperPlane size={24} />
           </button>
         </div>
 
-        {/* Acciones Derecha */}
         <div style={{display: 'flex', gap: '15px'}}>
              <button onClick={handleGenerateImage} className="active-press" disabled={generatingImage} style={{ background: "var(--primary)", border: "none", borderRadius: "50%", width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white", boxShadow: "0 4px 10px rgba(217, 4, 41, 0.3)" }}>
                 {generatingImage ? <FaSpinner className="spin-icon" /> : <FaWhatsapp size={20} />}
@@ -217,7 +224,6 @@ export default function FeedCard({ story }) {
         </div>
       </div>
       
-      {/* Texto de Likes (Abajo del todo) */}
       <div style={{ padding: "0 16px 16px 16px" }}>
         <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-main)" }}>{likeCount} Me gusta</span>
       </div>

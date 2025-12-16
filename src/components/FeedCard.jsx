@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { formatTimeAgo } from "../utils/timeFormat";
 import { toBlob } from "html-to-image";
@@ -8,9 +8,12 @@ import {
   FaRadiation, FaBiohazard, FaPepperHot, FaMapMarkerAlt
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants"; 
+// ✅ IMPORTACIONES DE FIREBASE AGREGADAS
+import { doc, updateDoc, increment } from "firebase/firestore";
+import { db } from "../firebase";
 
 const TOXIC_CONFIG = {
-  1: { color: "var(--border-subtle)", icon: null }, // Tranqui (borde normal)
+  1: { color: "var(--border-subtle)", icon: null },
   2: { color: "#fbbf24", icon: FaPepperHot, label: "Picante" },
   3: { color: "#f97316", icon: FaBiohazard, label: "Tóxico" },
   4: { color: "#ef4444", icon: FaRadiation, label: "Chernobyl" }
@@ -19,30 +22,62 @@ const TOXIC_CONFIG = {
 export default function FeedCard({ story }) {
   if (!story) return null;
 
+  // Estados
   const [isLiked, setIsLiked] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [likeCount, setLikeCount] = useState(story.likes || 0);
+  const [isSaved, setIsSaved] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
 
+  // ✅ EFECTO: VERIFICAR SI YA DI LOKE AL CARGAR
+  useEffect(() => {
+    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+    if (likedStories.includes(story.id)) {
+      setIsLiked(true);
+    }
+  }, [story.id]);
+
+  // Datos visuales
   const timeAgo = formatTimeAgo(story.createdAt);
-  
-  // Datos de Categoría y Provincia
   const catObj = CATEGORIES.find(c => c.value === story.category) || CATEGORIES[3];
   const provObj = PROVINCES.find(p => p.value === story.province);
   const provLabel = provObj ? provObj.label : "";
-
-  // Datos de Toxicidad
   const toxicLevel = story.toxicity || 1;
   const toxicData = TOXIC_CONFIG[toxicLevel] || TOXIC_CONFIG[1];
-
   const displayCategoryLabel = (story.category === "other" && story.customLabel) 
-    ? story.customLabel 
-    : catObj.label;
+    ? story.customLabel : catObj.label;
 
-  const handleLike = (e) => {
-    e.preventDefault();
-    setIsLiked(!isLiked);
-    setLikeCount((prev) => (isLiked ? prev - 1 : prev + 1));
+  // ✅ MANEJADOR DE LIKE REAL (CON FIREBASE)
+  const handleLike = async (e) => {
+    e.preventDefault(); // Evita entrar a la historia
+    e.stopPropagation();
+
+    // 1. Optimistic UI (Actualizar visualmente inmediato)
+    const newStatus = !isLiked;
+    setIsLiked(newStatus);
+    setLikeCount((prev) => (newStatus ? prev + 1 : prev - 1));
+
+    // 2. Actualizar LocalStorage (Persistencia local)
+    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+    if (newStatus) {
+      if (!likedStories.includes(story.id)) likedStories.push(story.id);
+    } else {
+      const index = likedStories.indexOf(story.id);
+      if (index > -1) likedStories.splice(index, 1);
+    }
+    localStorage.setItem('liked_stories', JSON.stringify(likedStories));
+
+    // 3. Actualizar Firebase (Persistencia en nube)
+    try {
+      const storyRef = doc(db, "stories", story.id);
+      await updateDoc(storyRef, {
+        likes: increment(newStatus ? 1 : -1)
+      });
+    } catch (error) {
+      console.error("Error dando like:", error);
+      // Si falla, revertimos visualmente (opcional, pero buena práctica)
+      setIsLiked(!newStatus);
+      setLikeCount((prev) => (newStatus ? prev - 1 : prev + 1));
+    }
   };
 
   const handleSave = (e) => {
@@ -50,12 +85,10 @@ export default function FeedCard({ story }) {
     setIsSaved(!isSaved);
   };
 
-  // Compartir Texto
   const handleShareLink = async (e) => {
     e.preventDefault();
     const locationText = provLabel ? ` en ${provLabel}` : "";
     const text = `🔥 ¡Bochinche${locationText}! ${story.title}\n\nLéelo aquí 👉 ${window.location.origin}/story/${story.id}`;
-    
     if (navigator.share) {
        try { await navigator.share({ title: story.title, text, url: window.location.origin + `/story/${story.id}` }); } 
        catch (err) {}
@@ -65,7 +98,6 @@ export default function FeedCard({ story }) {
     }
   };
 
-  // Generar Imagen
   const handleGenerateImage = async (e) => {
     e.preventDefault();
     if (generatingImage) return;
@@ -81,9 +113,7 @@ export default function FeedCard({ story }) {
       element.style.alignItems = "center";
       element.style.padding = "80px";
       element.style.fontFamily = "'Outfit', sans-serif";
-      element.style.position = "fixed";
-      element.style.top = "-9999px";
-      element.style.left = "-9999px";
+      element.style.position = "fixed"; element.style.left = "-9999px"; element.style.top = "0";
       
       const toxicBadge = toxicLevel > 1 ? `<div style="margin-bottom: 20px; background: ${toxicData.color}; color: white; padding: 10px 30px; border-radius: 50px; font-size: 30px; font-weight: bold;">⚠️ Nivel: ${toxicData.label}</div>` : '';
       const locBadge = provLabel ? `<div style="margin-top: 10px; color: #aaa; font-size: 24px; display: flex; align-items: center; gap: 10px;">📍 ${provLabel}</div>` : '';
@@ -122,79 +152,46 @@ export default function FeedCard({ story }) {
         background: "var(--surface)",
         borderRadius: "var(--radius-md)",
         boxShadow: "var(--shadow-sm)",
-        marginBottom: "20px", // Margen corregido
-        // 🎨 DISEÑO NUEVO: Borde izquierdo de color según toxicidad
+        marginBottom: "20px",
         border: "1px solid var(--border-subtle)",
         borderLeft: toxicLevel > 1 ? `5px solid ${toxicData.color}` : "1px solid var(--border-subtle)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        position: 'relative'
+        display: "flex", flexDirection: "column", position: 'relative', width: "100%", maxWidth: "100%", boxSizing: "border-box", overflow: "hidden"
       }}
     >
-      {/* HEADER COMPACTO (Sin barra superior gigante) */}
-      <div style={{ padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ width: "42px", height: "42px", borderRadius: "50%", padding: "2px", background: `linear-gradient(45deg, ${toxicData.color}, #f09433)` }}>
+      {/* HEADER */}
+      <div style={{ padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+          <div style={{ flexShrink: 0, width: "42px", height: "42px", borderRadius: "50%", padding: "2px", background: `linear-gradient(45deg, ${toxicData.color}, #f09433)` }}>
             <div style={{ width: "100%", height: "100%", background: "var(--surface)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FaUserSecret size={20} color="var(--text-main)" />
             </div>
           </div>
-          
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)", lineHeight: 1.2 }}>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+            <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               Anónimo <span style={{ color: "var(--text-secondary)", fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px" }}>• {timeAgo}</span>
             </span>
-            
-            {/* LÍNEA DE METADATA (Ubicación, Categoría y Toxicidad) */}
             <div style={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '0.75rem', marginTop: '3px'}}>
-                
-                {provLabel && (
-                    <span style={{color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '3px'}}>
-                        <FaMapMarkerAlt size={10} /> {provLabel}
-                    </span>
-                )}
-                
-                <span style={{ color: "var(--primary)", fontWeight: 600 }}>
-                    {displayCategoryLabel}
-                </span>
-
-                {/* ⚠️ TOXIC BADGE COMPACTO (Aquí se ve sutil pero claro) */}
-                {toxicLevel > 1 && (
-                  <span style={{ 
-                      color: toxicData.color, 
-                      border: `1px solid ${toxicData.color}`, 
-                      borderRadius: '4px', 
-                      padding: '0 5px',
-                      fontSize: '0.65rem',
-                      fontWeight: 700,
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '3px',
-                      height: '18px'
-                  }}>
-                    <toxicData.icon size={10} /> {toxicData.label.toUpperCase()}
-                  </span>
-                )}
+                {provLabel && ( <span style={{color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'}}><FaMapMarkerAlt size={10} /> {provLabel}</span> )}
+                <span style={{ color: "var(--primary)", fontWeight: 600, whiteSpace: 'nowrap' }}>{displayCategoryLabel}</span>
+                {toxicLevel > 1 && ( <span style={{ color: toxicData.color, border: `1px solid ${toxicData.color}`, borderRadius: '4px', padding: '0 5px', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px', height: '18px', whiteSpace: 'nowrap' }}><toxicData.icon size={10} /> {toxicData.label.toUpperCase()}</span> )}
             </div>
           </div>
         </div>
-        
-        {/* Menú de opciones */}
-        <FaEllipsisH color="var(--text-secondary)" />
+        <div style={{ flexShrink: 0, paddingLeft: '10px' }}> <FaEllipsisH color="var(--text-secondary)" /> </div>
       </div>
 
-      {/* CONTENIDO (Clickeable) */}
-      <Link to={`/story/${story.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-        <div style={{ padding: "0 16px 16px 16px" }}>
-          <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800, lineHeight: "1.4", color: "var(--text-main)" }}>{story.title}</h3>
-          <p style={{ margin: 0, fontSize: "0.95rem", lineHeight: "1.6", color: "var(--text-main)", opacity: 0.9, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{story.content}</p>
+      {/* CONTENIDO */}
+      <Link to={`/story/${story.id}`} style={{ textDecoration: "none", color: "inherit", display: 'block', width: '100%' }}>
+        <div style={{ padding: "0 16px 16px 16px", width: "100%", boxSizing: "border-box" }}>
+          <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800, lineHeight: "1.4", color: "var(--text-main)", wordBreak: "break-word", overflowWrap: "break-word" }}>{story.title}</h3>
+          <p style={{ margin: 0, fontSize: "0.95rem", lineHeight: "1.6", color: "var(--text-main)", opacity: 0.9, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word", overflowWrap: "break-word" }}>{story.content}</p>
         </div>
       </Link>
 
-      {/* FOOTER ACCIONES */}
-      <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--border-subtle)" }}>
+      {/* FOOTER */}
+      <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--border-subtle)", width: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+          {/* BOTÓN LIKE REAL */}
           <button onClick={handleLike} className="active-press" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
             {isLiked ? <FaHeart size={26} color="#ed4956" /> : <FaRegHeart size={26} color="var(--text-main)" />}
           </button>

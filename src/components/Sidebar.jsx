@@ -18,14 +18,15 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '10px' }}>
+    <aside style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '20px 15px' }}>
+      
       {/* 1. Logo */}
-      <div style={{ paddingLeft: '15px', marginBottom: '40px', marginTop: '10px' }}>
+      <div style={{ paddingLeft: '5px', marginBottom: '30px' }}>
         <BrandLogo />
       </div>
 
-      {/* 2. Navegación Principal */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+      {/* 2. Navegación */}
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -34,98 +35,94 @@ export default function Sidebar() {
               to={item.path}
               className="active-press"
               style={{
-                display: 'flex', alignItems: 'center', gap: '15px',
-                // AUMENTADO EL TAMAÑO (Padding más grande)
-                padding: '16px 20px', 
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '14px 20px', // Buen espacio interno
                 borderRadius: '16px', 
                 textDecoration: 'none',
                 color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
                 background: isActive ? 'var(--surface)' : 'transparent',
-                fontWeight: isActive ? 800 : 600, // Fuente un poco más gruesa
+                fontWeight: isActive ? 800 : 600,
                 fontSize: '1.05rem', // Letra un poco más grande
                 transition: 'all 0.2s',
-                boxShadow: isActive ? 'var(--shadow-sm)' : 'none'
+                borderLeft: isActive ? '4px solid var(--primary)' : '4px solid transparent'
               }}
             >
-              <item.icon size={22} />
+              {/* ✅ ÍCONOS MÁS GRANDES (26px) */}
+              <item.icon size={26} />
               <span>{item.label}</span>
             </Link>
           );
         })}
         
-        {/* BOTÓN GRANDE: CONTAR HISTORIA */}
+        {/* BOTÓN PRINCIPAL: Contar Historia */}
         <Link
           to="/submit"
           className="active-press"
           style={{
-            marginTop: '25px',
+            marginTop: '20px',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-            padding: '18px', // Más grande
+            padding: '16px',
             borderRadius: '50px', 
             textDecoration: 'none',
-            // COLOR FIJO: Rojo con letras blancas (Visible en Dark y Light mode)
             background: 'var(--primary)', 
             color: 'white', 
             fontWeight: 800, 
             fontSize: '1.1rem',
-            boxShadow: '0 8px 20px rgba(217, 4, 41, 0.4)'
+            boxShadow: '0 4px 12px rgba(217, 4, 41, 0.3)'
           }}
         >
-          <FaPlusCircle size={22} />
+          {/* ✅ ÍCONO GRANDE (24px) */}
+          <FaPlusCircle size={24} />
           <span>Contar Historia</span>
         </Link>
       </nav>
 
-      {/* 3. Footer Sidebar (Estilo Tarjeta Antigua) */}
-      <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
+      {/* 3. Footer: Tarjeta Usuario + Dark Mode */}
+      <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }}>
          
          {/* Tarjeta de Usuario */}
          <div style={{ 
-             background: 'var(--surface)', 
-             padding: '15px', 
+             display: 'flex', 
+             alignItems: 'center', 
+             gap: '14px',
+             background: 'var(--bg-body)',
+             padding: '14px',
              borderRadius: '16px',
-             border: '1px solid var(--border-subtle)',
-             boxShadow: 'var(--shadow-sm)',
-             marginBottom: '15px',
-             display: 'flex',
-             alignItems: 'center',
-             gap: '12px'
+             marginBottom: '15px'
          }}>
             <div style={{ 
-               width: 45, height: 45, borderRadius: '50%', background: 'var(--bg-body)',
-               display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)'
+               width: 42, height: 42, borderRadius: '50%', background: 'var(--surface)',
+               display: 'flex', alignItems: 'center', justifyContent: 'center', 
+               color: 'var(--text-main)',
+               boxShadow: 'var(--shadow-sm)'
             }}>
-               <FaUserSecret size={24} />
+               {/* ✅ ÍCONO USUARIO GRANDE (22px) */}
+               <FaUserSecret size={22} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)' }}>
                  Usuario Anónimo
                </span>
-               <span style={{ 
-                   fontFamily: 'monospace', 
-                   fontSize: '0.8rem', 
-                   color: 'var(--primary)',
-                   fontWeight: 600
-               }}>
-                  ID: {displayID}
+               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                  {displayID}
                </span>
             </div>
          </div>
         
-        {/* Botón Dark Mode */}
+        {/* Botón Toggle Tema */}
         <button 
           onClick={toggleDark}
           className="active-press"
           style={{ 
             background: 'transparent', 
-            border: '2px solid var(--border-subtle)', 
+            border: '1px solid var(--border-subtle)', 
             padding: '12px', borderRadius: '12px', cursor: 'pointer',
             color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
             width: '100%'
           }}
         >
-          {dark ? <><FaSun color="#fbbf24"/> Modo Claro</> : <><FaMoon color="#64748b"/> Modo Oscuro</>}
+          {dark ? <><FaSun size={20} color="#fbbf24"/> Modo Claro</> : <><FaMoon size={20} color="#64748b"/> Modo Oscuro</>}
         </button>
       </div>
     </aside>

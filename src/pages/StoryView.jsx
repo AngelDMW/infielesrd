@@ -10,24 +10,14 @@ import {
 import { db } from "../firebase";
 import { getAnonymousID } from "../utils/identity";
 import {
-  FaHeart,
-  FaRegHeart,
-  FaArrowLeft,
-  FaPaperPlane,
-  FaFlag,
-  FaShare,
-  FaSpinner,
-  FaUserSecret,
-  FaGavel,
-  FaRadiation,
-  FaBiohazard,
-  FaPepperHot,
-  FaMapMarkerAlt
+  FaHeart, FaRegHeart, FaArrowLeft, FaPaperPlane, FaFlag, FaShare,
+  FaSpinner, FaUserSecret, FaGavel, FaRadiation, FaBiohazard,
+  FaPepperHot, FaMapMarkerAlt
 } from "react-icons/fa";
 import { formatTimeAgo } from "../utils/timeFormat";
 import Loader from "../components/Loader";
 import { PROVINCES, CATEGORIES } from "../utils/constants";
-import ReportModal from "../components/ReportModal"; // ✅ Importamos el Modal de Reporte
+import ReportModal from "../components/ReportModal";
 import { incrementStoryRead } from "../utils/gamification";
 
 const CURRENT_USER_ID = getAnonymousID();
@@ -39,7 +29,6 @@ const TOXIC_CONFIG = {
   4: { color: "#ef4444", icon: FaRadiation, label: "Chernobyl" }
 };
 
-// Componente para las barras de votación
 const VerdictBar = ({ label, count, total, color, onClick, selected }) => {
   const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
@@ -62,33 +51,28 @@ export default function StoryView() {
   
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // Interacción
   const [commentText, setCommentText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  
-  // Veredicto
   const [hasVoted, setHasVoted] = useState(false);
   const [voteType, setVoteType] = useState(null);
-
-  // ✅ Estado para controlar el Modal de Reporte
   const [showReportModal, setShowReportModal] = useState(false);
 
-  
+  useEffect(() => {
+    // 1. Verificar Like Local
+    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+    if (likedStories.includes(id)) setIsLiked(true);
 
-useEffect(() => {
-    // 1. Verificar voto local
+    // 2. Verificar Voto Local
     const localVote = localStorage.getItem(`vote_${id}`);
     if (localVote) { setHasVoted(true); setVoteType(localVote); }
 
-    // ✅ NUEVO: Registrar lectura para el Ranking (Gamificación)
-    incrementStoryRead(id); 
+    // 3. Registrar Lectura
+    incrementStoryRead(id);
 
-    // 2. Escuchar cambios en Firestore
+    // 4. Firebase Snapshot
     const docRef = doc(db, "stories", id);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        // ... resto del código ...
       if (docSnap.exists()) { setStory({ id: docSnap.id, ...docSnap.data() }); } 
       else { setStory(null); }
       setLoading(false);
@@ -96,32 +80,47 @@ useEffect(() => {
     return () => unsubscribe();
   }, [id]);
 
+  // ✅ MANEJADOR DE LIKE CORREGIDO
   const handleLike = async () => {
-    if (isLiked) return;
-    setIsLiked(true);
-    try { await updateDoc(doc(db, "stories", id), { likes: increment(1) }); } 
-    catch (e) { setIsLiked(false); }
+    // 1. Optimistic UI
+    const newStatus = !isLiked;
+    setIsLiked(newStatus);
+    
+    // 2. LocalStorage
+    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+    if (newStatus) {
+      if (!likedStories.includes(id)) likedStories.push(id);
+    } else {
+      const idx = likedStories.indexOf(id);
+      if (idx > -1) likedStories.splice(idx, 1);
+    }
+    localStorage.setItem('liked_stories', JSON.stringify(likedStories));
+
+    // 3. Firebase
+    try { 
+        await updateDoc(doc(db, "stories", id), { likes: increment(newStatus ? 1 : -1) }); 
+    } 
+    catch (e) { 
+        console.error(e); 
+        setIsLiked(!newStatus); // Revertir si falla
+    }
   };
 
   const handleVote = async (type) => {
     if (hasVoted) return;
     setHasVoted(true); setVoteType(type);
     localStorage.setItem(`vote_${id}`, type);
-    
     const fieldMap = { him: "votes_him", her: "votes_her", toxic: "votes_toxic" };
-    try {
-        await updateDoc(doc(db, "stories", id), { [fieldMap[type]]: increment(1), votes_total: increment(1) });
-    } catch (e) { console.error(e); }
+    try { await updateDoc(doc(db, "stories", id), { [fieldMap[type]]: increment(1), votes_total: increment(1) }); } 
+    catch (e) { console.error(e); }
   };
 
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     setIsSending(true);
     const newComment = { id: Date.now().toString(), text: commentText, authorId: CURRENT_USER_ID, createdAt: new Date().toISOString() };
-    try {
-        await updateDoc(doc(db, "stories", id), { comments: arrayUnion(newComment), commentsCount: increment(1) });
-        setCommentText("");
-    } catch (e) { console.error(e); } 
+    try { await updateDoc(doc(db, "stories", id), { comments: arrayUnion(newComment), commentsCount: increment(1) }); setCommentText(""); } 
+    catch (e) { console.error(e); } 
     finally { setIsSending(false); }
   };
 
@@ -135,50 +134,33 @@ useEffect(() => {
   if (loading) return <Loader />;
   if (!story) return <div style={{ padding: 20, textAlign: 'center' }}>Historia no encontrada</div>;
 
-  // Cálculos UI
   const vHim = story.votes_him || 0; const vHer = story.votes_her || 0; const vToxic = story.votes_toxic || 0;
   const vTotal = story.votes_total || (vHim + vHer + vToxic) || 0;
-  
   const toxicLevel = story.toxicity || 1;
   const toxicData = TOXIC_CONFIG[toxicLevel] || TOXIC_CONFIG[1];
-  
   const catObj = CATEGORIES.find(c => c.value === story.category) || {};
   const categoryLabel = (story.category === "other" && story.customLabel) ? story.customLabel : catObj.label || "Bochinche";
-  
   const provObj = PROVINCES.find(p => p.value === story.province);
   const provLabel = provObj ? provObj.label : story.province;
 
   return (
     <div className="fade-in" style={{ paddingBottom: "40px" }}>
-      
-      {/* HEADER SUPERIOR */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
         <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", fontSize: "1.2rem", color: "var(--text-main)", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}>
           <FaArrowLeft /> Volver
         </button>
         <div style={{ display: "flex", gap: "15px" }}>
           <FaShare size={20} onClick={handleShare} style={{cursor: 'pointer', color: 'var(--text-main)'}} />
-          {/* ✅ BOTÓN DE REPORTE CONECTADO */}
-          <FaFlag 
-            size={20} 
-            onClick={() => setShowReportModal(true)} 
-            style={{cursor: 'pointer', color: 'var(--text-secondary)'}} 
-            title="Reportar historia"
-          />
+          <FaFlag size={20} onClick={() => setShowReportModal(true)} style={{cursor: 'pointer', color: 'var(--text-secondary)'}} />
         </div>
       </div>
 
-      {/* TARJETA DE HISTORIA */}
       <article style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-md)", overflow: "hidden", border: "1px solid var(--border-subtle)" }}>
-        
-        {/* Banner Tóxico */}
         {toxicLevel > 1 && (
            <div style={{ background: `${toxicData.color}20`, color: toxicData.color, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '800', fontSize: '0.8rem', letterSpacing: '1px', borderBottom: `1px solid ${toxicData.color}40` }}>
               <toxicData.icon size={18} /> <span>NIVEL: {toxicData.label.toUpperCase()}</span>
            </div>
         )}
-
-        {/* Info Autor + Ubicación */}
         <div style={{ padding: "20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--bg-body)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <FaUserSecret size={26} color="var(--text-main)" />
@@ -192,22 +174,17 @@ useEffect(() => {
             </span>
           </div>
         </div>
-
-        {/* Contenido */}
         <div style={{ padding: "24px" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "16px", lineHeight: 1.3 }}>{story.title}</h1>
           <p style={{ fontSize: "1.05rem", lineHeight: "1.7", color: "var(--text-main)", whiteSpace: "pre-wrap" }}>{story.content}</p>
         </div>
-
-        {/* Likes */}
         <div style={{ padding: "15px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: "20px" }}>
           <button onClick={handleLike} className="active-press" style={{ background: "var(--bg-body)", border: "none", padding: "8px 16px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "8px", color: isLiked ? "var(--primary)" : "var(--text-main)", fontWeight: 600, cursor: "pointer" }}>
-            {isLiked ? <FaHeart /> : <FaRegHeart />} {story.likes || 0} Likes
+            {isLiked ? <FaHeart color="#ed4956" /> : <FaRegHeart />} {story.likes || 0} Likes
           </button>
         </div>
       </article>
 
-      {/* VEREDICTO */}
       <div style={{ marginTop: '30px', background: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-subtle)' }}>
         <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px'}}>
            <div style={{background: 'var(--text-main)', color: 'var(--surface)', padding: '8px', borderRadius: '8px'}}> <FaGavel size={20} /> </div>
@@ -215,7 +192,6 @@ useEffect(() => {
         </div>
         {!hasVoted ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-             <p style={{margin: '0 0 10px 0', color: 'var(--text-secondary)'}}>¿Quién tuvo la culpa? Vota para ver los resultados.</p>
              <button onClick={() => handleVote('him')} className="active-press" style={verdictBtnStyle('#002d62')}>😡 Él es un Perro</button>
              <button onClick={() => handleVote('her')} className="active-press" style={verdictBtnStyle('#d90429')}>😒 Ella está Loca</button>
              <button onClick={() => handleVote('toxic')} className="active-press" style={verdictBtnStyle('#6c757d')}>☢️ Tóxicos los Dos</button>
@@ -225,12 +201,10 @@ useEffect(() => {
             <VerdictBar label="Él es un Perro" count={vHim} total={vTotal} color="#002d62" selected={voteType === 'him'} />
             <VerdictBar label="Ella está Loca" count={vHer} total={vTotal} color="#d90429" selected={voteType === 'her'} />
             <VerdictBar label="Tóxicos los Dos" count={vToxic} total={vTotal} color="#6c757d" selected={voteType === 'toxic'} />
-            <p style={{textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '15px'}}>Total de jueces: {vTotal}</p>
           </div>
         )}
       </div>
 
-      {/* COMENTARIOS */}
       <div style={{ marginTop: "30px" }}>
         <h3 style={{ marginBottom: "15px" }}>Comentarios ({story.commentsCount || 0})</h3>
         <div style={{ display: "flex", gap: "10px", background: "var(--surface)", padding: "15px", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", border: "1px solid var(--border-subtle)" }}>
@@ -240,8 +214,7 @@ useEffect(() => {
           </button>
         </div>
         <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "15px" }}>
-          {story.comments && story.comments.length > 0 ? (
-            story.comments.map((comment, idx) => (
+          {story.comments?.map((comment, idx) => (
               <div key={idx} style={{ background: "var(--surface)", padding: "15px", borderRadius: "12px", border: "1px solid var(--border-subtle)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
                    <span style={{fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)'}}>Anónimo-{comment.authorId?.slice(-4) || '???'}</span>
@@ -249,18 +222,11 @@ useEffect(() => {
                 </div>
                 <p style={{ margin: 0, fontSize: "0.95rem", color: "var(--text-main)" }}>{comment.text}</p>
               </div>
-            ))
-          ) : ( <p style={{ textAlign: "center", color: "var(--text-secondary)", fontStyle: 'italic' }}>Nadie ha opinado. ¡Sé el primero!</p> )}
+          ))}
         </div>
       </div>
 
-      {/* ✅ MODAL DE REPORTE (Renderizado Condicional) */}
-      {showReportModal && (
-        <ReportModal 
-            storyId={id} 
-            onClose={() => setShowReportModal(false)} 
-        />
-      )}
+      {showReportModal && ( <ReportModal storyId={id} onClose={() => setShowReportModal(false)} /> )}
     </div>
   );
 }
@@ -268,5 +234,5 @@ useEffect(() => {
 const verdictBtnStyle = (color) => ({
   padding: '15px', borderRadius: '12px', border: `1px solid ${color}`, background: 'transparent',
   color: 'var(--text-main)', fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
-  display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', transition: 'all 0.2s'
+  display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px'
 });

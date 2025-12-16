@@ -1,30 +1,53 @@
 import { useState } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { FaPaperPlane, FaPenNib, FaInfoCircle, FaTag } from "react-icons/fa";
+import { 
+  FaPaperPlane, 
+  FaInfoCircle, 
+  FaRadiation, 
+  FaPepperHot, 
+  FaBiohazard, 
+  FaCloud, 
+  FaMapMarkerAlt, 
+  FaPen, 
+  FaLock, 
+  FaHeart, 
+  FaUserSecret, 
+  FaBullhorn, 
+  FaMagic 
+} from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
+import { PROVINCES } from "../utils/constants"; 
 
-const CATEGORIES = [
-  { value: "infidelity", label: "💔 Infidelidad" },
-  { value: "confession", label: "🤫 Confesión" },
-  { value: "dating", label: "🔥 Citas" },
-  { value: "uncategorized", label: "📢 Bochinche" },
-  { value: "other", label: "✨ Personalizado" }, // Nueva opción
+// Configuramos las categorías con iconos visuales para la UI
+const CATEGORY_UI = [
+  { value: "infidelity", label: "Infidelidad", icon: FaLock, color: "#e91e63" },
+  { value: "confession", label: "Confesión", icon: FaUserSecret, color: "#9c27b0" },
+  { value: "dating", label: "Citas", icon: FaHeart, color: "#ff9800" },
+  { value: "uncategorized", label: "Bochinche", icon: FaBullhorn, color: "#607d8b" },
+  { value: "other", label: "Otro", icon: FaMagic, color: "#2196f3" },
+];
+
+const TOXICITY_LEVELS = [
+  { value: 1, label: "Tranqui", icon: FaCloud, color: "#4ade80", desc: "Chisme sano" },
+  { value: 2, label: "Picante", icon: FaPepperHot, color: "#fbbf24", desc: "Se calienta" },
+  { value: 3, label: "Tóxico", icon: FaBiohazard, color: "#f97316", desc: "Peligro" },
+  { value: 4, label: "Chernobyl", icon: FaRadiation, color: "#ef4444", desc: "Destrucción" }
 ];
 
 export default function Submit() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("");
-  const [customLabel, setCustomLabel] = useState(""); // Estado para la categoría propia
+  const [province, setProvince] = useState("");
+  const [customLabel, setCustomLabel] = useState("");
+  const [toxicity, setToxicity] = useState(1);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Validación: Si es 'other', debe tener customLabel
-    if (!title || !content || !category) return;
+    if (!title || !content || !category || !province) return;
     if (category === "other" && !customLabel.trim()) return;
 
     setLoading(true);
@@ -33,270 +56,240 @@ export default function Submit() {
         title: title.trim(),
         content: content.trim(),
         category,
-        // Si es personalizada guardamos el texto, si no, null
+        province,
         customLabel: category === "other" ? customLabel.trim() : null,
-        status: "pending",
+        toxicity,
         createdAt: serverTimestamp(),
         likes: 0,
-        commentsCount: 0,
-        views: 0,
+        status: "pending", 
       });
-
-      alert("¡Historia enviada! Pendiente de aprobación.");
-      navigate("/");
-    } catch (err) {
-      console.error("Error:", err);
-      alert("Hubo un error al enviar.");
+      navigate("/stories");
+    } catch (error) {
+      console.error("Error al enviar:", error);
+      alert("Hubo un error. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="fade-in"
-      style={{ maxWidth: "600px", margin: "0 auto", paddingBottom: "100px" }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          marginBottom: "30px",
-          paddingTop: "20px",
-        }}
-      >
-        <div
-          style={{
-            width: 60,
-            height: 60,
-            background: "var(--surface)",
-            borderRadius: "50%",
-            margin: "0 auto 15px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "var(--shadow-md)",
-            color: "var(--primary)",
-          }}
-        >
-          <FaPenNib size={24} />
-        </div>
-        <h1
-          style={{
-            fontSize: "1.8rem",
-            fontWeight: 800,
-            margin: "0 0 10px 0",
-            color: "var(--text-main)",
-          }}
-        >
-          Confiesa tu Secreto
+    <div className="fade-in page-content" style={{ maxWidth: '600px', margin: '0 auto' }}>
+      
+      {/* HEADER VISUAL */}
+      <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+        <h1 className="section-title" style={{ fontSize: '2rem', marginBottom: '10px' }}>
+          Confiesa tu Pecado
         </h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-          Tu identidad está 100% protegida.
+        <p style={{ color: "var(--text-secondary)", fontSize: '1rem' }}>
+          Tu identidad es secreta. Tu historia será leyenda. 🤫
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "25px" }}
-      >
-        {/* Título */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <label
-            style={{
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              marginLeft: "5px",
-              color: "var(--text-main)",
-            }}
-          >
-            Título Atractivo
-          </label>
-          <input
-            type="text"
-            placeholder="Ej: Mi novio no sabe que salí con su hermano..."
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={80}
-            style={{
-              padding: "16px",
-              borderRadius: "12px",
-              border: "1px solid var(--border-subtle)",
-              background: "var(--surface)",
-              fontSize: "1rem",
-              outline: "none",
-              boxShadow: "var(--shadow-sm)",
-              color: "var(--text-main)", // ✅ SOLUCIÓN BUG MODO OSCURO
-            }}
-          />
-        </div>
-
-        {/* Categoría */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <label
-            style={{
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              marginLeft: "5px",
-              color: "var(--text-main)",
-            }}
-          >
-            Categoría
-          </label>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "10px",
-            }}
-          >
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.value}
-                type="button"
-                onClick={() => setCategory(cat.value)}
-                style={{
-                  padding: "12px",
-                  borderRadius: "10px",
-                  border:
-                    category === cat.value
-                      ? "2px solid var(--primary)"
-                      : "1px solid var(--border-subtle)",
-                  background:
-                    category === cat.value
-                      ? "rgba(206, 17, 38, 0.05)"
-                      : "var(--surface)",
-                  color:
-                    category === cat.value
-                      ? "var(--primary)"
-                      : "var(--text-main)",
-                  fontWeight: 600,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  transition: "0.2s",
-                }}
-              >
-                {cat.label}
-              </button>
-            ))}
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "25px" }}>
+        
+        {/* 1. SELECCIÓN DE CATEGORÍA (Botones Grandes) */}
+        <div>
+          <label style={labelStyle}>Elige el tema</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
+            {CATEGORY_UI.map((cat) => {
+              const isSelected = category === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategory(cat.value)}
+                  className="active-press"
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    padding: '15px 10px',
+                    background: isSelected ? cat.color : 'var(--surface)',
+                    color: isSelected ? '#fff' : 'var(--text-secondary)',
+                    border: isSelected ? 'none' : '1px solid var(--border-subtle)',
+                    borderRadius: '16px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isSelected ? `0 8px 16px ${cat.color}40` : 'none'
+                  }}
+                >
+                  <cat.icon size={22} />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{cat.label}</span>
+                </button>
+              );
+            })}
           </div>
-
-          {/* INPUT EXTRA: Solo si elige "Personalizado" */}
+          {/* Campo extra si elige "Otro" */}
           {category === "other" && (
-            <div
+            <input
+              type="text"
+              placeholder="¿Qué tema es? Ej: Venganza"
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+              maxLength={20}
               className="fade-in"
-              style={{
-                marginTop: "10px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <FaTag color="var(--primary)" />
-              <input
-                type="text"
-                value={customLabel}
-                onChange={(e) => setCustomLabel(e.target.value)}
-                placeholder="Escribe tu propia categoría (Ej: Venganza)"
-                maxLength={20}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  borderRadius: "10px",
-                  border: "1px solid var(--primary)",
-                  background: "var(--surface)",
-                  outline: "none",
-                  color: "var(--text-main)",
-                  fontSize: "0.9rem", // ✅ SOLUCIÓN BUG
-                }}
-              />
-            </div>
+              style={{ ...inputStyle, marginTop: '10px' }}
+              required
+            />
           )}
         </div>
 
-        {/* Historia */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <label
-            style={{
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              marginLeft: "5px",
-              color: "var(--text-main)",
-            }}
-          >
-            Tu Historia
-          </label>
-          <textarea
-            placeholder="Cuenta todos los detalles..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={8}
-            style={{
-              padding: "16px",
-              borderRadius: "12px",
-              border: "1px solid var(--border-subtle)",
-              background: "var(--surface)",
-              fontSize: "1rem",
-              outline: "none",
-              boxShadow: "var(--shadow-sm)",
-              resize: "none",
-              lineHeight: "1.5",
-              color: "var(--text-main)", // ✅ SOLUCIÓN BUG MODO OSCURO
-            }}
-          />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              fontSize: "0.75rem",
-              color: "var(--text-secondary)",
-              paddingLeft: "5px",
-            }}
-          >
-            <FaInfoCircle /> Sé detallado, las historias cortas suelen ser
-            ignoradas.
+        {/* 2. TÍTULO */}
+        <div>
+          <label style={labelStyle}>Título Impactante</label>
+          <div style={{ position: 'relative' }}>
+            <FaPen style={iconInputStyle} />
+            <input
+              type="text"
+              placeholder="Ej: Mi novio no sabe que soy..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={60}
+              required
+              style={inputStyle}
+            />
           </div>
         </div>
 
-        {/* Botón Enviar */}
+        {/* 3. UBICACIÓN (Estilo Select Mejorado) */}
+        <div>
+          <label style={labelStyle}>¿Dónde ocurrió?</label>
+          <div style={{ position: 'relative' }}>
+            <FaMapMarkerAlt style={iconInputStyle} />
+            <select
+              value={province}
+              onChange={(e) => setProvince(e.target.value)}
+              required
+              style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}
+            >
+              <option value="">Selecciona la zona...</option>
+              {PROVINCES.map((prov) => (
+                <option key={prov.value} value={prov.value}>{prov.label}</option>
+              ))}
+            </select>
+            {/* Flechita custom CSS hack */}
+            <div style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-secondary)' }}>▼</div>
+          </div>
+        </div>
+
+        {/* 4. HISTORIA */}
+        <div>
+          <label style={labelStyle}>Echa el cuento completo</label>
+          <textarea
+            rows="8"
+            placeholder="No omitas detalles..."
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            required
+            style={{ ...inputStyle, paddingLeft: '20px', resize: 'vertical' }} // Sin icono dentro
+          ></textarea>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "8px" }}>
+            <FaInfoCircle color="var(--primary)" /> 
+            <span>Escribe al menos 3 líneas para que te lean.</span>
+          </div>
+        </div>
+
+        {/* 5. NIVEL DE TOXICIDAD (Diseño Tarjetas) */}
+        <div>
+          <label style={labelStyle}>Nivel de Toxicidad</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+             {TOXICITY_LEVELS.map((level) => {
+                const isActive = toxicity === level.value;
+                return (
+                  <button
+                    key={level.value}
+                    type="button"
+                    onClick={() => setToxicity(level.value)}
+                    className="active-press"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: isActive ? `2px solid ${level.color}` : '1px solid var(--border-subtle)',
+                      background: isActive ? `${level.color}15` : 'var(--surface)',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ 
+                        background: level.color, color: '#fff', 
+                        width: '36px', height: '36px', borderRadius: '50%', 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                    }}>
+                        <level.icon size={18} />
+                    </div>
+                    <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: isActive ? level.color : 'var(--text-main)' }}>{level.label}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{level.desc}</div>
+                    </div>
+                  </button>
+                )
+             })}
+          </div>
+        </div>
+
+        {/* BOTÓN ENVIAR */}
         <button
           type="submit"
-          disabled={
-            loading ||
-            !title ||
-            !content ||
-            !category ||
-            (category === "other" && !customLabel)
-          }
+          disabled={loading || !title || !content || !category || !province}
           className="active-press"
           style={{
-            marginTop: "10px",
-            padding: "18px",
+            marginTop: "20px",
+            padding: "20px",
             borderRadius: "50px",
             border: "none",
-            background: "var(--primary)",
+            background: "linear-gradient(135deg, var(--primary) 0%, #ff4d6d 100%)",
             color: "white",
-            fontSize: "1.1rem",
-            fontWeight: 700,
+            fontSize: "1.2rem",
+            fontWeight: 800,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: "10px",
-            opacity: loading ? 0.6 : 1,
-            boxShadow: "0 10px 20px rgba(206, 17, 38, 0.3)",
+            gap: "12px",
+            opacity: loading ? 0.7 : 1,
+            boxShadow: "0 10px 25px rgba(217, 4, 41, 0.4)",
+            letterSpacing: '0.5px'
           }}
         >
-          {loading ? (
-            "Enviando..."
-          ) : (
-            <>
-              <FaPaperPlane /> Publicar Anónimamente
-            </>
+          {loading ? "Publicando..." : (
+             <>
+               <FaPaperPlane /> PUBLICAR ANÓNIMAMENTE
+             </>
           )}
         </button>
+
       </form>
     </div>
   );
 }
+
+// --- ESTILOS EN JS (Para mantener limpieza en el JSX) ---
+const labelStyle = {
+  display: 'block',
+  marginBottom: '10px',
+  fontWeight: 700,
+  fontSize: '0.95rem',
+  color: 'var(--text-main)',
+  marginLeft: '4px'
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '16px 16px 16px 45px', // Padding izq para el icono
+  borderRadius: '14px',
+  border: '1px solid var(--border-subtle)',
+  background: 'var(--surface)',
+  color: 'var(--text-main)',
+  fontSize: '1rem',
+  outline: 'none',
+  transition: 'border-color 0.2s',
+  fontFamily: 'inherit'
+};
+
+const iconInputStyle = {
+  position: 'absolute',
+  left: '16px',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  color: 'var(--text-secondary)',
+  pointerEvents: 'none'
+};

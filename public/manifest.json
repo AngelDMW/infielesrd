@@ -1,0 +1,22 @@
+{
+  "name": "Infieles RD",
+  "short_name": "InfielesRD",
+  "description": "La red de chismes y confesiones #1 de RD.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f4f7",
+  "theme_color": "#d90429",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "orientation": "portrait"
+}

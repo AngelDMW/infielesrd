@@ -5,7 +5,7 @@ const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
 export default function useAgora(roomId, userId) {
   const [isConnected, setIsConnected] = useState(false);
-  const [remoteUsers, setRemoteUsers] = useState([]);
+  const [remoteUsers, setRemoteUsers] = useState([]); // Lista de usuarios
   const [isMuted, setIsMuted] = useState(false);
 
   const client = useRef(null);
@@ -14,53 +14,71 @@ export default function useAgora(roomId, userId) {
   useEffect(() => {
     if (!APP_ID || !roomId || !userId) return;
 
-    // 🔴 CAMBIO 1: Cambiar mode 'rtc' a 'live'
+    // Usamos modo 'live' para compatibilidad con el móvil
     client.current = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
 
     const init = async () => {
-      // Listeners
-      client.current.on("user-published", async (user, mediaType) => {
-        await client.current.subscribe(user, mediaType);
-        if (mediaType === "audio") user.audioTrack.play();
-        setRemoteUsers((prev) => [...prev, user]);
+      // ✅ NUEVO: Detectar cuando alguien ENTRA (Presencia)
+      client.current.on("user-joined", (user) => {
+        console.log("👤 Usuario entró (Web detectó):", user.uid);
+        setRemoteUsers((prev) => {
+          // Evitar duplicados por seguridad
+          if (prev.find((u) => u.uid === user.uid)) return prev;
+          return [...prev, user];
+        });
       });
 
-      client.current.on("user-unpublished", (user) => {
+      // ✅ NUEVO: Detectar cuando alguien SALE
+      client.current.on("user-left", (user) => {
+        console.log("👋 Usuario salió:", user.uid);
         setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid));
       });
 
-      try {
-        // 🔴 CAMBIO 2: Establecer rol como 'host' (Broadcaster)
-        // Si no haces esto en modo 'live', serás solo audiencia y no se enviará tu audio.
-        await client.current.setClientRole("host");
+      // 🎧 ESCUCHAR: Detectar cuando alguien HABLA (Audio)
+      client.current.on("user-published", async (user, mediaType) => {
+        await client.current.subscribe(user, mediaType);
+        console.log("🔊 Audio recibido de:", user.uid);
 
-        // Unirse (Token null para testing)
+        if (mediaType === "audio") {
+          user.audioTrack.play();
+        }
+
+        // (Opcional) Aseguramos que esté en la lista por si el evento 'joined' falló
+        setRemoteUsers((prev) => {
+          if (prev.find((u) => u.uid === user.uid)) return prev;
+          return [...prev, user];
+        });
+      });
+
+      client.current.on("user-unpublished", (user) => {
+        // Aquí no lo sacamos de la lista, solo dejamos de escuchar
+        console.log("🔇 Usuario dejó de transmitir:", user.uid);
+      });
+
+      try {
+        await client.current.setClientRole("host");
         await client.current.join(APP_ID, roomId, null, userId);
 
-        // Crear Audio (Micro)
+        // Crear micro
         const track = await AgoraRTC.createMicrophoneAudioTrack();
         localAudioTrack.current = track;
 
-        // Publicar
         await client.current.publish(track);
         setIsConnected(true);
       } catch (error) {
-        console.error("Error Agora:", error);
+        console.error("Error Agora Web:", error);
       }
     };
 
     init();
 
-    // Cleanup
     return () => {
       if (localAudioTrack.current) {
         localAudioTrack.current.stop();
         localAudioTrack.current.close();
-        localAudioTrack.current = null;
       }
       if (client.current) {
         client.current.leave();
-        client.current = null;
       }
       setIsConnected(false);
       setRemoteUsers([]);

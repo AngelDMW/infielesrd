@@ -8,8 +8,12 @@ import {
   FaRadiation, FaBiohazard, FaPepperHot, FaMapMarkerAlt
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants"; 
-import { doc, updateDoc, increment } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"; // ✅ CORREGIDO
 import { db } from "../firebase";
+
+// --- IMPORTANTE: Asegúrate de tener esta utilidad o usa un string fijo si no la tienes ---
+// Si no tienes el archivo utils/identity.js, puedes borrar esta línea y usar un ID falso temporal.
+import { getAnonymousID } from "../utils/identity"; 
 
 const TOXIC_CONFIG = {
   1: { color: "var(--border-subtle)", icon: null },
@@ -21,19 +25,37 @@ const TOXIC_CONFIG = {
 export default function FeedCard({ story }) {
   if (!story) return null;
 
-  const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(story.likes || 0);
+  // Obtenemos el ID único del navegador para saber si YA dio like
+  const currentUserId = getAnonymousID();
+
+  // ✅ FUNCIONES SEGURAS PARA LEER LIKES (Soporta formato viejo y nuevo)
+  const getLikesCount = (likes) => {
+      if (Array.isArray(likes)) return likes.length;
+      if (typeof likes === 'number') return likes;
+      return 0;
+  };
+
+  const checkIfLiked = (likes) => {
+      if (Array.isArray(likes)) return likes.includes(currentUserId);
+      // Fallback para sistema antiguo (localStorage)
+      const localLikes = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+      return localLikes.includes(story.id);
+  };
+
+  const [isLiked, setIsLiked] = useState(checkIfLiked(story.likes));
+  const [likeCount, setLikeCount] = useState(getLikesCount(story.likes));
   const [isSaved, setIsSaved] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
 
   useEffect(() => {
-    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
-    if (likedStories.includes(story.id)) {
-      setIsLiked(true);
-    }
-  }, [story.id]);
+    setIsLiked(checkIfLiked(story.likes));
+    setLikeCount(getLikesCount(story.likes));
+  }, [story.likes]);
 
-  const timeAgo = formatTimeAgo(story.createdAt);
+  // Protección para fechas
+  const timeAgo = story.createdAt 
+    ? formatTimeAgo(story.createdAt.toDate ? story.createdAt.toDate() : story.createdAt) 
+    : "Reciente";
   
   const catObj = CATEGORIES.find(c => c.value === story.category) || CATEGORIES[3];
   const provObj = PROVINCES.find(p => p.value === story.province);
@@ -51,9 +73,12 @@ export default function FeedCard({ story }) {
     e.stopPropagation();
 
     const newStatus = !isLiked;
+    
+    // Actualización Visual Inmediata (Optimistic UI)
     setIsLiked(newStatus);
     setLikeCount((prev) => (newStatus ? prev + 1 : prev - 1));
 
+    // Guardar en LocalStorage como respaldo
     const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
     if (newStatus) {
       if (!likedStories.includes(story.id)) likedStories.push(story.id);
@@ -65,9 +90,19 @@ export default function FeedCard({ story }) {
 
     try {
       const storyRef = doc(db, "stories", story.id);
-      await updateDoc(storyRef, { likes: increment(newStatus ? 1 : -1) });
+      
+      if (newStatus) {
+          // ✅ FORMA CORRECTA: Agregar mi ID a la lista (ArrayUnion)
+          // Esto NO borra los likes que vienen del móvil
+          await updateDoc(storyRef, { likes: arrayUnion(currentUserId) });
+      } else {
+          // ✅ FORMA CORRECTA: Quitar solo mi ID
+          await updateDoc(storyRef, { likes: arrayRemove(currentUserId) });
+      }
+
     } catch (error) {
       console.error("Error like:", error);
+      // Revertir cambios si falla internet
       setIsLiked(!newStatus);
       setLikeCount((prev) => (newStatus ? prev - 1 : prev + 1));
     }
@@ -91,7 +126,6 @@ export default function FeedCard({ story }) {
     }
   };
 
-  // ✅ FUNCIÓN CORREGIDA PARA MÓVILES (Fuerza Bruta)
   const handleGenerateImage = async (e) => {
     e.preventDefault();
     if (generatingImage) return;
@@ -99,24 +133,16 @@ export default function FeedCard({ story }) {
     
     try {
       const element = document.createElement("div");
-      
-      // --- ESTRATEGIA MÓVIL ---
-      // 1. Z-Index negativo profundo (detrás de la app)
-      // 2. Opacidad 1 (VISIBLE) - Crucial para que iOS renderice el texto
-      // 3. Posición fija top/left 0
       element.style.position = "fixed";
       element.style.top = "0";
       element.style.left = "0";
       element.style.zIndex = "-9999"; 
       element.style.width = "1080px"; 
-      // Sin opacidad ni visibilidad oculta. Confiamos en que z-index lo oculte.
       
-      // Fondo Gradiente
       element.style.background = `linear-gradient(135deg, #0f172a 0%, #1e293b 100%)`;
       element.style.display = "flex";
       element.style.flexDirection = "column";
       element.style.padding = "80px";
-      // Usamos fuentes del sistema para asegurar carga rápida en móvil
       element.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
       element.style.boxSizing = "border-box";
       element.style.color = "white";
@@ -129,7 +155,6 @@ export default function FeedCard({ story }) {
       
       const locBadge = provLabel ? `<div style="margin-top: 20px; color: #94a3b8; font-size: 30px; display: flex; align-items: center; gap: 15px;"><span style="font-size: 36px">📍</span> ${provLabel}</div>` : '';
 
-      // HTML CON ESTILOS INLINE (Más seguro para html-to-image)
       element.innerHTML = `
         <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
           
@@ -175,19 +200,13 @@ export default function FeedCard({ story }) {
       `;
       document.body.appendChild(element);
       
-      // ⏳ ESPERA LARGA PARA MÓVILES (1 SEGUNDO)
-      // Esto da tiempo al procesador del celular para renderizar el nodo oculto
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       const blob = await toBlob(element, { 
           quality: 0.95, 
           backgroundColor: '#0f172a',
           width: 1080,
-          // Permitir que la altura sea dinámica para que no corte texto
-          style: {
-             'visibility': 'visible',
-             'z-index': '9999' // Truco interno para forzar captura
-          }
+          style: { 'visibility': 'visible', 'z-index': '9999' }
       });
       
       document.body.removeChild(element);
@@ -197,11 +216,7 @@ export default function FeedCard({ story }) {
       const file = new File([blob], `bochinche-${story.id}.png`, { type: "image/png" });
       
       if (navigator.share && navigator.canShare({ files: [file] })) { 
-          await navigator.share({ 
-              files: [file], 
-              title: "InfielesRD",
-              text: `😱 ${story.title}`
-          }); 
+          await navigator.share({ files: [file], title: "InfielesRD", text: `😱 ${story.title}` }); 
       } else { 
           const url = URL.createObjectURL(blob); 
           const link = document.createElement("a"); 
@@ -289,6 +304,7 @@ export default function FeedCard({ story }) {
       </div>
       
       <div style={{ padding: "0 16px 16px 16px" }}>
+        {/* ✅ AQUI ESTÁ EL ARREGLO VISUAL DEL TEXTO 'Anon...' */}
         <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-main)" }}>{likeCount} Me gusta</span>
       </div>
     </article>

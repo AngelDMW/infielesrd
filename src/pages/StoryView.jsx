@@ -6,6 +6,7 @@ import {
   updateDoc,
   increment,
   arrayUnion,
+  arrayRemove,
   addDoc,
   collection,
   serverTimestamp
@@ -21,7 +22,6 @@ import {
   FaShare,
   FaSpinner,
   FaUserSecret,
-  FaGavel,
   FaRadiation,
   FaBiohazard,
   FaPepperHot,
@@ -114,22 +114,29 @@ export default function StoryView() {
   const [commentText, setCommentText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
-  const [voteType, setVoteType] = useState(null);
+  const [likeCount, setLikeCount] = useState(0); 
   const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
-    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
-    if (likedStories.includes(id)) setIsLiked(true);
-
-    const localVote = localStorage.getItem(`vote_${id}`);
-    if (localVote) { setHasVoted(true); setVoteType(localVote); }
-
     incrementStoryRead(id);
 
     const docRef = doc(db, "stories", id);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) { setStory({ id: docSnap.id, ...docSnap.data() }); } 
+      if (docSnap.exists()) { 
+          const data = { id: docSnap.id, ...docSnap.data() };
+          setStory(data);
+          
+          // Sincronización de Likes
+          const likes = data.likes;
+          if (Array.isArray(likes)) {
+              setIsLiked(likes.includes(CURRENT_USER_ID));
+              setLikeCount(likes.length);
+          } else {
+              setLikeCount(likes || 0);
+              const localLikes = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+              setIsLiked(localLikes.includes(id));
+          }
+      } 
       else { setStory(null); }
       setLoading(false);
     });
@@ -139,21 +146,26 @@ export default function StoryView() {
   const handleLike = async () => {
     const newStatus = !isLiked;
     setIsLiked(newStatus);
-    const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
-    if (newStatus) { if (!likedStories.includes(id)) likedStories.push(id); } 
-    else { const idx = likedStories.indexOf(id); if (idx > -1) likedStories.splice(idx, 1); }
-    localStorage.setItem('liked_stories', JSON.stringify(likedStories));
-    try { await updateDoc(doc(db, "stories", id), { likes: increment(newStatus ? 1 : -1) }); } 
-    catch (e) { setIsLiked(!newStatus); }
-  };
+    setLikeCount(prev => newStatus ? prev + 1 : prev - 1); 
 
-  const handleVote = async (type) => {
-    if (hasVoted) return;
-    setHasVoted(true); setVoteType(type);
-    localStorage.setItem(`vote_${id}`, type);
-    const fieldMap = { him: "votes_him", her: "votes_her", toxic: "votes_toxic" };
-    try { await updateDoc(doc(db, "stories", id), { [fieldMap[type]]: increment(1), votes_total: increment(1) }); } 
-    catch (e) { console.error(e); }
+    try { 
+        const storyRef = doc(db, "stories", id);
+        if (newStatus) {
+            await updateDoc(storyRef, { likes: arrayUnion(CURRENT_USER_ID) });
+        } else {
+            await updateDoc(storyRef, { likes: arrayRemove(CURRENT_USER_ID) });
+        }
+        
+        const likedStories = JSON.parse(localStorage.getItem('liked_stories') || '[]');
+        if (newStatus) { if (!likedStories.includes(id)) likedStories.push(id); } 
+        else { const idx = likedStories.indexOf(id); if (idx > -1) likedStories.splice(idx, 1); }
+        localStorage.setItem('liked_stories', JSON.stringify(likedStories));
+
+    } catch (e) { 
+        console.error("Error like:", e);
+        setIsLiked(!newStatus);
+        setLikeCount(prev => newStatus ? prev - 1 : prev + 1);
+    }
   };
 
   const handleSendComment = async () => {
@@ -202,8 +214,6 @@ export default function StoryView() {
   if (loading) return <Loader />;
   if (!story) return <div style={{ padding: 20, textAlign: 'center' }}>Historia no encontrada</div>;
 
-  const vHim = story.votes_him || 0; const vHer = story.votes_her || 0; const vToxic = story.votes_toxic || 0;
-  const vTotal = story.votes_total || (vHim + vHer + vToxic) || 0;
   const toxicLevel = story.toxicity || 1;
   const toxicData = TOXIC_CONFIG[toxicLevel] || TOXIC_CONFIG[1];
   const catObj = CATEGORIES.find(c => c.value === story.category) || {};
@@ -212,7 +222,7 @@ export default function StoryView() {
   const provLabel = provObj ? provObj.label : story.province;
 
   return (
-    <div className="fade-in" style={{ paddingBottom: "120px" }}> {/* Espacio extra abajo para que el input no tape nada */}
+    <div className="fade-in" style={{ paddingBottom: "120px" }}>
       
       {/* HEADER */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
@@ -239,7 +249,7 @@ export default function StoryView() {
           <div>
             <h3 style={{ margin: 0, fontSize: "1rem", color: "var(--text-main)" }}>Anónimo</h3>
             <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-              {formatTimeAgo(story.createdAt)}
+              {story.createdAt ? formatTimeAgo(story.createdAt.toDate ? story.createdAt.toDate() : story.createdAt) : ''}
               {provLabel && ( <span style={{display: 'flex', alignItems: 'center', gap: '3px'}}>• <FaMapMarkerAlt size={11} /> {provLabel}</span> )}
               • <span style={{ color: "var(--primary)", fontWeight: 600 }}>{categoryLabel}</span>
             </span>
@@ -251,34 +261,13 @@ export default function StoryView() {
         </div>
         <div style={{ padding: "15px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", gap: "20px" }}>
           <button onClick={handleLike} className="active-press" style={{ background: "var(--bg-body)", border: "none", padding: "8px 16px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "8px", color: isLiked ? "var(--primary)" : "var(--text-main)", fontWeight: 600, cursor: "pointer" }}>
-            {isLiked ? <FaHeart color="#ed4956" /> : <FaRegHeart />} {story.likes || 0} Likes
+            {isLiked ? <FaHeart color="#ed4956" /> : <FaRegHeart />} {likeCount} Likes
           </button>
         </div>
       </article>
 
-      {/* VEREDICTO */}
-      <div style={{ marginTop: '30px', background: 'var(--surface)', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-subtle)' }}>
-        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px'}}>
-           <div style={{background: 'var(--text-main)', color: 'var(--surface)', padding: '8px', borderRadius: '8px'}}> <FaGavel size={20} /> </div>
-           <h3 style={{margin: 0, fontSize: '1.2rem'}}>Veredicto del Pueblo</h3>
-        </div>
-        {!hasVoted ? (
-          <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-             <button onClick={() => handleVote('him')} className="active-press" style={verdictBtnStyle('#002d62')}>😡 Él es un Perro</button>
-             <button onClick={() => handleVote('her')} className="active-press" style={verdictBtnStyle('#d90429')}>😒 Ella está Loca</button>
-             <button onClick={() => handleVote('toxic')} className="active-press" style={verdictBtnStyle('#6c757d')}>☢️ Tóxicos los Dos</button>
-          </div>
-        ) : (
-          <div>
-            <VerdictBar label="Él es un Perro" count={vHim} total={vTotal} color="#002d62" selected={voteType === 'him'} />
-            <VerdictBar label="Ella está Loca" count={vHer} total={vTotal} color="#d90429" selected={voteType === 'her'} />
-            <VerdictBar label="Tóxicos los Dos" count={vToxic} total={vTotal} color="#6c757d" selected={voteType === 'toxic'} />
-          </div>
-        )}
-      </div>
-
       {/* SECCIÓN COMENTARIOS */}
-      <div style={{ marginTop: "30px", borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
+      <div style={{ marginTop: "30px", paddingTop: '20px' }}> {/* Quitamos el borde superior para que se vea más limpio sin el veredicto */}
         <h3 style={{ marginBottom: "20px" }}>Comentarios ({story.commentsCount || 0})</h3>
         <div style={{ display: "flex", flexDirection: "column" }}>
           {story.comments && story.comments.length > 0 ? (
@@ -296,7 +285,7 @@ export default function StoryView() {
         </div>
       </div>
 
-      {/* ✅ NUEVA BARRA DE INPUT: CÁPSULA FLOTANTE */}
+      {/* INPUT FLOTANTE */}
       <div style={{ 
           position: 'fixed', 
           bottom: '20px', 
@@ -306,15 +295,14 @@ export default function StoryView() {
           maxWidth: '600px',
           background: 'var(--surface)', 
           padding: '8px 10px', 
-          borderRadius: '50px', // Cápsula
-          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', // Sombra elegante
+          borderRadius: '50px', 
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)', 
           border: '1px solid var(--border-subtle)',
           display: 'flex', 
           alignItems: 'center', 
           gap: '10px',
           zIndex: 1000
       }}>
-          {/* Avatar Pequeño dentro de la barra */}
           <div style={{ 
               width: 38, height: 38, borderRadius: '50%', background: 'var(--bg-body)', 
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -331,8 +319,8 @@ export default function StoryView() {
               placeholder={story.commentsCount === 0 ? "Sé el primero en opinar..." : "Agrega un comentario..."}
               style={{ 
                   flex: 1, 
-                  background: 'transparent', // Sin fondo
-                  border: 'none', // Sin borde
+                  background: 'transparent', 
+                  border: 'none', 
                   fontSize: '0.95rem', 
                   outline: 'none',
                   color: 'var(--text-main)',
@@ -362,24 +350,3 @@ export default function StoryView() {
     </div>
   );
 }
-
-// Sub-componentes Veredicto
-const VerdictBar = ({ label, count, total, color, onClick, selected }) => {
-  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-  return (
-    <div onClick={onClick} className="active-press" style={{ marginBottom: '12px', cursor: 'pointer', opacity: selected ? 1 : 0.8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', fontWeight: 600 }}>
-        <span style={{color: 'var(--text-main)'}}>{label}</span>
-        <span style={{color: 'var(--text-secondary)'}}>{percentage}%</span>
-      </div>
-      <div style={{ height: '12px', background: 'var(--border-subtle)', borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
-        <div style={{ width: `${percentage}%`, height: '100%', background: color, borderRadius: '6px', transition: 'width 0.5s ease-out' }} />
-      </div>
-    </div>
-  );
-};
-const verdictBtnStyle = (color) => ({
-  padding: '15px', borderRadius: '12px', border: `1px solid ${color}`, background: 'transparent',
-  color: 'var(--text-main)', fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
-  display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px'
-});

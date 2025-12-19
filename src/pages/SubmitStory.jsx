@@ -1,25 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase";
+import { db, auth } from "../firebase"; 
+import { signInAnonymously } from "firebase/auth"; 
 import {
   FaPaperPlane,
   FaMapMarkerAlt,
-  FaBiohazard,
   FaExclamationTriangle,
-  FaPepperHot,
-  FaRadiation,
   FaSpinner
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants";
 import { getAnonymousID } from "../utils/identity";
-
-const TOXIC_LEVELS = [
-  { value: 1, label: "Tranqui (Nivel 1)", color: "#4ade80", icon: null },
-  { value: 2, label: "Picante (Nivel 2)", color: "#fbbf24", icon: FaPepperHot },
-  { value: 3, label: "Tóxico (Nivel 3)", color: "#f97316", icon: FaBiohazard },
-  { value: 4, label: "Chernobyl (Nivel 4)", color: "#ef4444", icon: FaRadiation }
-];
 
 export default function SubmitStory() {
   const navigate = useNavigate();
@@ -30,29 +21,47 @@ export default function SubmitStory() {
   const [content, setContent] = useState("");
   const [province, setProvince] = useState("");
   const [category, setCategory] = useState("infidelity");
-  const [toxicity, setToxicity] = useState(1);
   const [agreed, setAgreed] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!title || !content || !province || !agreed) {
       alert("Por favor llena todos los campos y acepta las reglas.");
+      return;
+    }
+
+    if (title.length < 3) {
+      alert("El título es muy corto (mínimo 3 letras).");
+      return;
+    }
+
+    if (content.length < 10) {
+      alert("El cuento es muy corto, danos más detalles (mínimo 10 letras).");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Guardar en Firestore
+      let currentUserId = auth.currentUser?.uid;
+      
+      if (!currentUserId) {
+        const userCredential = await signInAnonymously(auth);
+        currentUserId = userCredential.user.uid;
+      }
+
       await addDoc(collection(db, "stories"), {
         title: title.trim(),
         content: content.trim(),
         province,
         category,
-        toxicity,
         createdAt: serverTimestamp(),
-        authorId: getAnonymousID(),
-        status: "approved", // ✅ "approved" para que salga inmediato (en producción debería ser "pending")
+        authorId: currentUserId || getAnonymousID(),
+        
+        // ✅ AQUÍ ESTÁ EL CAMBIO PARA MODERACIÓN
+        status: "pending", 
+        
         likes: 0,
         commentsCount: 0,
         votes_him: 0,
@@ -61,8 +70,10 @@ export default function SubmitStory() {
         votes_total: 0
       });
 
-      // Redirigir al inicio
+      // Mensaje de éxito explicando que debe esperar aprobación
+      alert("¡Historia enviada! Un administrador la revisará antes de publicarla.");
       navigate("/");
+      
     } catch (error) {
       console.error("Error al subir historia:", error);
       alert("Hubo un error al subir tu historia. Intenta de nuevo.");
@@ -74,7 +85,6 @@ export default function SubmitStory() {
   return (
     <div className="fade-in page-content" style={{ paddingBottom: "100px", maxWidth: "600px", margin: "0 auto" }}>
       
-      {/* HEADER */}
       <div style={{ marginBottom: "30px", textAlign: "center" }}>
         <h1 className="section-title">Confesar Pecado 😈</h1>
         <p style={{ color: "var(--text-secondary)" }}>
@@ -127,7 +137,7 @@ export default function SubmitStory() {
             />
         </div>
 
-        {/* SELECTORES (Provincia y Categoría) */}
+        {/* SELECTORES */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
           <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
             <label style={{fontWeight: 700, color: 'var(--text-main)'}}>Provincia</label>
@@ -180,50 +190,24 @@ export default function SubmitStory() {
           </div>
         </div>
 
-        {/* NIVEL DE TOXICIDAD */}
-        <div style={{display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px'}}>
-            <label style={{fontWeight: 700, color: 'var(--text-main)'}}>Nivel de Toxicidad ☢️</label>
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px'}}>
-                {TOXIC_LEVELS.map((level) => {
-                    const isSelected = toxicity === level.value;
-                    return (
-                        <div 
-                            key={level.value}
-                            onClick={() => setToxicity(level.value)}
-                            style={{
-                                border: isSelected ? `2px solid ${level.color}` : '1px solid var(--border-subtle)',
-                                background: isSelected ? `${level.color}20` : 'var(--surface)',
-                                padding: '10px', borderRadius: '10px',
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                cursor: 'pointer', transition: 'all 0.2s'
-                            }}
-                        >
-                            {level.icon && <level.icon color={level.color} />}
-                            <span style={{fontSize: '0.85rem', fontWeight: isSelected ? 700 : 400, color: 'var(--text-main)'}}>{level.label}</span>
-                        </div>
-                    )
-                })}
-            </div>
-        </div>
-
         {/* AVISO LEGAL */}
         <div style={{ 
             background: 'rgba(239, 68, 68, 0.1)', 
             border: '1px solid rgba(239, 68, 68, 0.3)', 
             padding: '15px', borderRadius: '12px',
-            display: 'flex', gap: '10px', alignItems: 'start'
+            display: 'flex', gap: '10px', alignItems: 'start',
+            marginTop: '10px'
         }}>
             <FaExclamationTriangle color="#ef4444" style={{marginTop: '3px', flexShrink: 0}} />
             <div>
                 <p style={{margin: '0 0 5px 0', fontSize: '0.9rem', fontWeight: 700, color: '#ef4444'}}>Reglas Importantes</p>
                 <p style={{margin: 0, fontSize: '0.8rem', color: 'var(--text-main)'}}>
-                    Prohibido publicar nombres completos, números de teléfono, direcciones exactas o fotos íntimas. 
-                    Si rompes las reglas, serás bloqueado permanentemente.
+                    Prohibido publicar nombres completos...
                 </p>
             </div>
         </div>
 
-        {/* CHECKBOX ACEPTAR */}
+        {/* CHECKBOX */}
         <div style={{display: 'flex', alignItems: 'center', gap: '10px', padding: '0 5px'}}>
             <input 
                 type="checkbox" 

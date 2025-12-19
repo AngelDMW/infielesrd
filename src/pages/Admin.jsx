@@ -1,79 +1,77 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // ✅ Para redirigir si no hay login
 import { 
     collection, query, where, orderBy, getDocs, updateDoc, doc, deleteDoc, 
     onSnapshot, getCountFromServer 
 } from 'firebase/firestore'; 
-import { db } from '../firebase';
+import { db, auth } from '../firebase'; // ✅ Importamos auth para verificar sesión
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
-    FaChartLine, FaFlag, FaCheck, FaTrashAlt, FaSpinner, 
-    FaRegClock, FaNewspaper, FaExclamationTriangle, FaHeadset, FaUsers 
+    FaFlag, FaTrashAlt, FaNewspaper, FaExclamationTriangle, FaHeadset, FaUsers 
 } from 'react-icons/fa';
 import { formatTimeAgo } from '../utils/timeFormat'; 
+
+// --- HELPER PARA FECHAS SEGURAS (Evita pantalla negra) ---
+const safeTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Fecha desconocida';
+    try {
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return formatTimeAgo(date);
+    } catch (e) {
+        return '...';
+    }
+};
 
 // --- SUB-COMPONENTE: GESTIÓN DE SALAS DE VOZ ---
 const VoiceRoomsManager = () => {
     const [rooms, setRooms] = useState([]);
+    const [error, setError] = useState(null);
     
-    // Escuchar salas en tiempo real (para ver si entra gente)
     useEffect(() => {
         const q = query(collection(db, "voice_rooms"), orderBy("createdAt", "desc"));
-        const unsub = onSnapshot(q, (snap) => {
-            setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+        
+        // ✅ AHORA MANEJAMOS EL ERROR DE PERMISOS
+        const unsub = onSnapshot(q, 
+            (snap) => {
+                setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            (err) => {
+                console.error("Error cargando salas:", err);
+                setError("No tienes permiso para ver las salas o no existen.");
+            }
+        );
         return unsub;
     }, []);
 
     const handleDelete = async (id) => {
         if(window.confirm("¿Estás seguro de forzar el cierre de esta sala?")) {
-            try {
-                await deleteDoc(doc(db, "voice_rooms", id));
-            } catch (e) {
-                alert("Error borrando sala: " + e.message);
-            }
+            try { await deleteDoc(doc(db, "voice_rooms", id)); } catch (e) { alert("Error: " + e.message); }
         }
     };
+
+    if (error) return <p style={{color: 'red', textAlign: 'center'}}>{error}</p>;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>Salas Activas ({rooms.length})</h3>
-            
             {rooms.length === 0 ? (
                 <p style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
-                    No hay chats de voz activos en este momento.
+                    No hay chats de voz activos.
                 </p>
             ) : (
                 rooms.map(r => (
                     <div key={r.id} style={{ 
-                        background: 'var(--surface)', padding: '15px 20px', 
+                        background: 'var(--surface)', padding: '15px', 
                         borderRadius: '12px', border: '1px solid var(--border-subtle)',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <div style={{ 
-                                width: 40, height: 40, borderRadius: '50%', 
-                                background: '#e0f7fa', color: '#0288d1',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <FaHeadset size={20} />
-                            </div>
-                            <div>
-                                <strong style={{ fontSize: '1rem', display: 'block' }}>{r.name}</strong>
-                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <FaUsers size={12} /> {r.users?.length || 0} usuarios conectados
-                                </span>
-                            </div>
+                        <div>
+                            <strong>{r.name || "Sala sin nombre"}</strong>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block' }}>
+                                <FaUsers /> {r.users ? r.users.length : 0} usuarios
+                            </span>
                         </div>
-                        
-                        <button 
-                            onClick={() => handleDelete(r.id)} 
-                            style={{ 
-                                background: '#fee2e2', color: '#dc2626', border: 'none', 
-                                padding: '8px 16px', borderRadius: '8px', cursor: 'pointer',
-                                fontWeight: 700, fontSize: '0.85rem'
-                            }}
-                        >
-                            <FaTrashAlt /> Eliminar
-                        </button>
+                        <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><FaTrashAlt /></button>
                     </div>
                 ))
             )}
@@ -84,41 +82,40 @@ const VoiceRoomsManager = () => {
 // --- SUB-COMPONENTE: TABLA DE REPORTES ---
 const ReportsTable = () => {
     const [reports, setReports] = useState([]);
-    
+
     useEffect(() => {
         const fetch = async () => {
-            const q = query(collection(db, "reports"), orderBy("createdAt", "desc")); // Asegúrate que en Firebase guardes como 'createdAt' o 'reportedAt'
-            const snap = await getDocs(q);
-            setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            try {
+                const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
+                const snap = await getDocs(q);
+                setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (e) { console.error("Error reportes:", e); }
         };
         fetch();
     }, []);
 
     const handleDeleteContent = async (report) => {
-        if (!window.confirm("¿Eliminar contenido reportado y cerrar reporte?")) return;
+        if (!window.confirm("¿Eliminar contenido y cerrar reporte?")) return;
         try {
             if (report.type === 'story') {
                 await deleteDoc(doc(db, "stories", report.targetId));
-            } else if (report.type === 'comment') {
-                // Borrar comentario (requiere saber ID de historia, si guardaste storyId en el reporte ayuda)
-                // Si no, solo borramos el reporte por ahora como ejemplo
             }
             await deleteDoc(doc(db, "reports", report.id));
             setReports(prev => prev.filter(r => r.id !== report.id));
-            alert("Acción realizada.");
+            alert("Eliminado.");
         } catch (e) { alert("Error: " + e.message); }
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {reports.map(r => (
-                <div key={r.id} style={{ background: 'var(--surface)', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #ffcc00', boxShadow: 'var(--shadow-sm)' }}>
+                <div key={r.id} style={{ background: 'var(--surface)', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #ffcc00' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                         <span style={{ fontWeight: 700, color: '#d97706', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <FaExclamationTriangle /> {r.reason}
+                            <FaExclamationTriangle /> {r.reason || "Sin razón"}
                         </span>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {r.createdAt ? formatTimeAgo(r.createdAt) : 'Hace un momento'}
+                            {safeTimeAgo(r.createdAt)}
                         </span>
                     </div>
                     <p style={{ fontSize: '0.9rem', marginBottom: '15px' }}>
@@ -126,11 +123,11 @@ const ReportsTable = () => {
                     </p>
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button onClick={() => handleDeleteContent(r)} style={{ padding: '8px 16px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>Eliminar Contenido</button>
-                        <button onClick={() => deleteDoc(doc(db, "reports", r.id)).then(() => setReports(p => p.filter(x => x.id !== r.id)))} style={{ padding: '8px 16px', background: 'var(--bg-body)', color: 'var(--text-main)', border: '1px solid var(--border-subtle)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>Ignorar Reporte</button>
+                        <button onClick={() => deleteDoc(doc(db, "reports", r.id)).then(() => setReports(p => p.filter(x => x.id !== r.id)))} style={{ padding: '8px 16px', background: 'var(--bg-body)', color: 'var(--text-main)', border: '1px solid var(--border-subtle)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>Cerrar Reporte</button>
                     </div>
                 </div>
             ))}
-            {reports.length === 0 && <p style={{textAlign: 'center', color: 'var(--text-secondary)'}}>No hay reportes pendientes.</p>}
+            {reports.length === 0 && <p style={{textAlign: 'center', color: 'var(--text-secondary)'}}>No hay reportes.</p>}
         </div>
     );
 };
@@ -139,21 +136,21 @@ const ReportsTable = () => {
 const PendingStories = () => {
     const [stories, setStories] = useState([]);
 
-    const fetchPending = async () => {
-        const q = query(collection(db, "stories"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
-        const snap = await getDocs(q);
-        setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-
-    useEffect(() => { fetchPending(); }, []);
+    useEffect(() => {
+        const fetchPending = async () => {
+            try {
+                const q = query(collection(db, "stories"), where("status", "==", "pending"), orderBy("createdAt", "desc"));
+                const snap = await getDocs(q);
+                setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (e) { console.error("Error pending:", e); }
+        };
+        fetchPending();
+    }, []);
 
     const handleAction = async (id, action) => {
         try {
-            if (action === 'approve') {
-                await updateDoc(doc(db, "stories", id), { status: "approved" });
-            } else {
-                await deleteDoc(doc(db, "stories", id));
-            }
+            if (action === 'approve') await updateDoc(doc(db, "stories", id), { status: "approved" });
+            else await deleteDoc(doc(db, "stories", id));
             setStories(prev => prev.filter(s => s.id !== id));
         } catch (e) { alert("Error: " + e.message); }
     };
@@ -163,15 +160,16 @@ const PendingStories = () => {
             {stories.map(s => (
                 <div key={s.id} style={{ background: 'var(--surface)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
                     <div style={{marginBottom: 10}}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'rgba(206,17,38,0.1)', padding: '4px 8px', borderRadius: '4px', marginRight: 10 }}>
-                            {s.category === 'other' ? `✨ ${s.customLabel}` : s.category}
+                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'rgba(206,17,38,0.1)', padding: '4px 8px', borderRadius: '4px', marginRight: 10 }}>
+                            {s.category}
                         </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{safeTimeAgo(s.createdAt)}</span>
                     </div>
                     <h3 style={{ margin: '0 0 10px 0' }}>{s.title}</h3>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '15px', whiteSpace: 'pre-wrap' }}>{s.content}</p>
+                    <p style={{ fontSize: '0.9rem', marginBottom: '15px' }}>{s.content}</p>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <button onClick={() => handleAction(s.id, 'approve')} style={{ flex: 1, padding: '10px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Aprobar</button>
-                        <button onClick={() => handleAction(s.id, 'reject')} style={{ flex: 1, padding: '10px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Rechazar</button>
+                        <button onClick={() => handleAction(s.id, 'approve')} style={{ flex: 1, padding: '10px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Aprobar</button>
+                        <button onClick={() => handleAction(s.id, 'reject')} style={{ flex: 1, padding: '10px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Rechazar</button>
                     </div>
                 </div>
             ))}
@@ -182,26 +180,56 @@ const PendingStories = () => {
 
 // --- COMPONENTE PRINCIPAL ADMIN ---
 export default function Admin() {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('pending');
     const [stats, setStats] = useState({ pending: 0, reports: 0 });
+    const [checkingAuth, setCheckingAuth] = useState(true); // ✅ ESTADO DE CARGA
 
-    // Cargar contadores simples
+    // 1. VERIFICAR AUTENTICACIÓN ANTES DE CARGAR NADA
     useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                // Si no hay usuario, mandamos al login INMEDIATAMENTE
+                console.log("No hay sesión, redirigiendo a login...");
+                navigate('/adminlogin');
+            } else {
+                // Si hay usuario, permitimos cargar el panel
+                setCheckingAuth(false);
+            }
+        });
+        return unsubscribe;
+    }, [navigate]);
+
+    // 2. CARGAR ESTADÍSTICAS (Solo si ya pasamos el Auth Check)
+    useEffect(() => {
+        if (checkingAuth) return; 
+
         const loadStats = async () => {
             try {
-                const pendingSnap = await getCountFromServer(query(collection(db, "stories"), where("status", "==", "pending")));
-                const reportsSnap = await getCountFromServer(collection(db, "reports"));
-                setStats({ pending: pendingSnap.data().count, reports: reportsSnap.data().count });
-            } catch (e) { console.log("Error stats", e); }
+                const pendingSnap = await getDocs(query(collection(db, "stories"), where("status", "==", "pending")));
+                const reportsSnap = await getDocs(collection(db, "reports"));
+                setStats({ pending: pendingSnap.size, reports: reportsSnap.size });
+            } catch (e) { 
+                console.log("Error cargando stats (posible falta de permisos):", e); 
+            }
         };
         loadStats();
-    }, []);
+    }, [checkingAuth]);
 
     const tabs = [
         { id: 'pending', label: 'Historias', icon: FaNewspaper, count: stats.pending },
         { id: 'reports', label: 'Reportes', icon: FaFlag, count: stats.reports },
-        { id: 'voice', label: 'Salas Voz', icon: FaHeadset, count: null }, // Count dinámico dentro
+        { id: 'voice', label: 'Salas Voz', icon: FaHeadset, count: null },
     ];
+
+    // ✅ PANTALLA DE CARGA MIENTRAS VERIFICAMOS LOGIN
+    if (checkingAuth) {
+        return (
+            <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg-body)', color: 'var(--text-main)' }}>
+                <h2>🔒 Verificando credenciales...</h2>
+            </div>
+        );
+    }
 
     return (
         <div className="fade-in" style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', minHeight: '100vh' }}>
@@ -210,7 +238,6 @@ export default function Admin() {
                 <p style={{ color: 'var(--text-secondary)' }}>Moderación InfielesRD</p>
             </div>
 
-            {/* TAB MENU */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', overflowX: 'auto' }}>
                 {tabs.map(tab => (
                     <button
@@ -218,23 +245,20 @@ export default function Admin() {
                         onClick={() => setActiveTab(tab.id)}
                         className="active-press"
                         style={{ 
-                            flex: 1, minWidth: '100px',
-                            padding: '15px', 
+                            flex: 1, minWidth: '100px', padding: '15px', 
                             background: activeTab === tab.id ? 'var(--primary)' : 'var(--surface)', 
                             color: activeTab === tab.id ? 'white' : 'var(--text-main)', 
                             borderRadius: '12px', cursor: 'pointer', border: 'none',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
-                            boxShadow: 'var(--shadow-sm)'
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px'
                         }}
                     >
                         <tab.icon size={20} />
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{tab.label}</span>
+                        <span style={{ fontWeight: 700 }}>{tab.label}</span>
                         {tab.count !== null && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({tab.count})</span>}
                     </button>
                 ))}
             </div>
 
-            {/* CONTENIDO TABS */}
             <div>
                 {activeTab === 'pending' && <PendingStories />}
                 {activeTab === 'reports' && <ReportsTable />}

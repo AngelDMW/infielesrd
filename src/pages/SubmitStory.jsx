@@ -7,7 +7,8 @@ import {
   FaPaperPlane,
   FaMapMarkerAlt,
   FaExclamationTriangle,
-  FaSpinner
+  FaSpinner,
+  FaPen
 } from "react-icons/fa";
 import { PROVINCES, CATEGORIES } from "../utils/constants";
 import { getAnonymousID } from "../utils/identity";
@@ -21,6 +22,7 @@ export default function SubmitStory() {
   const [content, setContent] = useState("");
   const [province, setProvince] = useState("");
   const [category, setCategory] = useState("infidelity");
+  const [customCategory, setCustomCategory] = useState(""); // ✅ NUEVO ESTADO
   const [agreed, setAgreed] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -28,6 +30,12 @@ export default function SubmitStory() {
 
     if (!title || !content || !province || !agreed) {
       alert("Por favor llena todos los campos y acepta las reglas.");
+      return;
+    }
+
+    // Validación Categoría Personalizada
+    if (category === 'other' && !customCategory.trim()) {
+      alert("Por favor escribe tu categoría personalizada.");
       return;
     }
 
@@ -51,26 +59,25 @@ export default function SubmitStory() {
         currentUserId = userCredential.user.uid;
       }
 
+      // ✅ CORRECCIÓN SANTIAGO: Forzamos la mayúscula si es necesario
+      const finalProvince = (province.toLowerCase() === 'santiago') ? 'Santiago' : province;
+
       await addDoc(collection(db, "stories"), {
         title: title.trim(),
         content: content.trim(),
-        province,
+        province: finalProvince, // Usamos la provincia corregida
         category,
+        customLabel: category === 'other' ? customCategory.trim() : null, // ✅ Guardamos el label
         createdAt: serverTimestamp(),
         authorId: currentUserId || getAnonymousID(),
-        
-        // ✅ AQUÍ ESTÁ EL CAMBIO PARA MODERACIÓN
         status: "pending", 
-        
-        likes: 0,
+        likes: [],
+        comments: [],
         commentsCount: 0,
-        votes_him: 0,
-        votes_her: 0,
-        votes_toxic: 0,
-        votes_total: 0
+        reportCount: 0,
+        views: 0
       });
 
-      // Mensaje de éxito explicando que debe esperar aprobación
       alert("¡Historia enviada! Un administrador la revisará antes de publicarla.");
       navigate("/");
       
@@ -190,6 +197,32 @@ export default function SubmitStory() {
           </div>
         </div>
 
+        {/* ✅ INPUT PARA CATEGORÍA PERSONALIZADA (Solo si selecciona 'other') */}
+        {category === 'other' && (
+           <div className="fade-in" style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+             <label style={{fontWeight: 700, color: 'var(--primary)'}}>Escribe tu categoría</label>
+             <div style={{position: 'relative'}}>
+                <FaPen style={{position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)'}} />
+                <input
+                  type="text"
+                  placeholder="Ej: Líos de Patio..."
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  maxLength={30}
+                  style={{
+                    width: "100%",
+                    padding: "12px 12px 12px 35px",
+                    borderRadius: "12px",
+                    border: "1px solid var(--primary)",
+                    background: "var(--surface)",
+                    color: "var(--text-main)",
+                    outline: "none"
+                  }}
+                />
+             </div>
+           </div>
+        )}
+
         {/* AVISO LEGAL */}
         <div style={{ 
             background: 'rgba(239, 68, 68, 0.1)', 
@@ -202,7 +235,7 @@ export default function SubmitStory() {
             <div>
                 <p style={{margin: '0 0 5px 0', fontSize: '0.9rem', fontWeight: 700, color: '#ef4444'}}>Reglas Importantes</p>
                 <p style={{margin: 0, fontSize: '0.8rem', color: 'var(--text-main)'}}>
-                    Prohibido publicar nombres completos...
+                    Prohibido publicar nombres completos, números de teléfono, direcciones exactas o fotos íntimas.
                 </p>
             </div>
         </div>
@@ -221,7 +254,6 @@ export default function SubmitStory() {
             </label>
         </div>
 
-        {/* BOTÓN ENVIAR */}
         <button
           type="submit"
           className="active-press"
